@@ -1,0 +1,95 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style>
+</head><body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script src="anime-fx.js"></script>
+<script>
+// 日系演出效果示範：每段一種效果，左下角標名稱
+const c = document.getElementById('c').getContext('2d'), W = 1920, H = 1080;
+window.DURATION = 10;
+const { clamp, lerp, ease } = AFX;
+
+// 示範用的「主角」：簡單的圓形剪影，實際使用時換成照片或角色圖
+function hero(x, y, s, col = '#F08A24') {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  c.fillStyle = '#111'; c.beginPath(); c.arc(0, 0, 150, 0, AFX.TAU); c.fill();
+  c.fillStyle = col; c.beginPath(); c.arc(0, 0, 135, 0, AFX.TAU); c.fill();
+  c.fillStyle = '#111'; c.fillRect(-60, -40, 26, 60); c.fillRect(34, -40, 26, 60);
+  c.restore();
+}
+// 示範用的「照片」：漸層風景
+function photo() {
+  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#6EC6FF'); g.addColorStop(0.6, '#FFE0B2'); g.addColorStop(1, '#8BC34A');
+  c.fillStyle = g; c.fillRect(-400, -400, W + 800, H + 800);
+  c.fillStyle = '#fff'; for (let i = 0; i < 6; i++) { c.beginPath(); c.ellipse(200 + i * 330, 220 + (i % 2) * 60, 140, 50, 0, 0, AFX.TAU); c.fill(); }
+  c.fillStyle = '#4E7D32'; c.beginPath(); c.moveTo(-400, 800); for (let x = -400; x <= W + 400; x += 80) c.lineTo(x, 760 - 90 * Math.sin(x / 260)); c.lineTo(W + 400, H + 400); c.lineTo(-400, H + 400); c.fill();
+  hero(W / 2, 640, 0.9);
+}
+function label(text) {
+  c.save(); c.font = '700 34px "Noto Sans TC"'; c.fillStyle = 'rgba(0,0,0,0.6)';
+  const w = c.measureText(text).width; c.fillRect(40, H - 100, w + 40, 60);
+  c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(text, 60, H - 70); c.restore();
+}
+
+window.render = function (t) {
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
+  if (t < 1.2) {
+    AFX.minchoCard(c, [
+      { text: '第四話', x: 160, y: 330, size: 150 },
+      { text: '四週年', x: 160, y: 700, size: 360 },
+      { text: 'ANNIVERSARY', x: 1760, y: 930, size: 90, align: 'right', color: '#D97757' },
+    ]);
+    label('明朝體字卡');
+  } else if (t < 2.4) {
+    AFX.sunburst(c, t);
+    AFX.sparkles(c, t, { n: 40, size: 26 });
+    AFX.slam(c, '四週年！', W / 2, H / 2, t, 1.3, { size: 260, color: '#fff', shadow: '#E63946' });
+    label('放射背景＋砸字＋閃爍星點');
+  } else if (t < 3.6) {
+    c.fillStyle = '#fff'; c.fillRect(0, 0, W, H);
+    const [dx, dy] = AFX.shake(t, { t0: 2.4, amp: 30, decay: 1.0 });
+    c.translate(dx, dy); hero(W / 2, H / 2, 1.3); c.setTransform(1, 0, 0, 1, 0, 0);
+    AFX.speedLines(c, t, { r0: 330 });
+    AFX.slam(c, 'ドン', 1500, 260, t, 2.6, { size: 200, rot: 0.12, color: '#111', strokeColor: '#fff', shadow: false });
+    label('集中線＋畫面動＋擬音字');
+    AFX.impactFrame(c, t > 3.4, { tint: null });
+  } else if (t < 5.0) {
+    c.fillStyle = '#1D3557'; c.fillRect(0, 0, W, H);
+    AFX.streaks(c, t, { n: 60 });
+    const tt = AFX.onTwos(t);
+    hero(lerp(300, 1500, (tt - 3.6) / 1.4), H / 2 + 20 * Math.sin(tt * 20), 1, '#FFD23F');
+    label('流線＋2コマ打ち');
+  } else if (t < 6.2) {
+    photo();
+    AFX.cutIn(c, t, 5.05, 6.15, (c2, u) => {
+      c2.fillStyle = 'rgba(255,255,255,0.15)'; for (let i = 0; i < 12; i++) c2.fillRect(i * 170 + (t * 900 % 170), 0, 60, H);
+      hero(1400, H / 2, 0.8, '#FFD23F');
+      c2.font = '900 150px "Noto Sans TC"'; c2.fillStyle = '#fff'; c2.textBaseline = 'middle'; c2.fillText('2022 → 2026', 180, H / 2);
+    });
+    label('カットイン');
+  } else if (t < 7.6) {
+    const p = AFX.sanKaiPan(t, 6.2, 1.4);
+    c.translate(W / 2 + p.dx, H / 2 + p.dy); c.scale(p.zoom, p.zoom); c.translate(-W / 2, -H / 2); photo(); c.setTransform(1, 0, 0, 1, 0, 0);
+    AFX.para(c, { from: 'rgba(60,20,110,0.6)', to: 'rgba(255,180,90,0)' });
+    AFX.paperTexture(c, t);
+    label('3回PAN（止め絵）＋パラ＋紙紋');
+  } else if (t < 8.8) {
+    c.fillStyle = '#0B1F3A'; c.fillRect(0, 0, W, H);
+    AFX.screentone(c, [0, 0, W, H], { color: '#1E3A66', step: 16, density: (x, y) => 0.15 + 0.6 * (y / H) });
+    AFX.tategaki(c, 'はじまりの日', 1500, 150, t, 7.7, { size: 110 });
+    AFX.tategaki(c, '四年前的那一天', 1330, 250, t, 8.0, { size: 70, font: '"Noto Serif TC", serif', weight: 700, color: '#FFD9A0' });
+    AFX.tokaLight(c, 520, 380, t, { r: 40, len: 9, rot: 0.3 });
+    AFX.tokaLight(c, 760, 620, t + 0.4, { r: 22, len: 6 });
+    label('直書き標題＋透過光＋網點');
+  } else {
+    photo();
+    const beat = 8.8 + Math.floor((t - 8.8) / 0.4) * 0.4, k = 1 - (t - beat) / 0.4;
+    AFX.tear(c, t, Math.max(0, k - 0.3));
+    AFX.flash(c, t, beat, { dur: 0.1, max: 0.5 });
+    label('撕裂色偏＋拍點白閃');
+  }
+};
+window.render(0);
+</script>
+</body></html>

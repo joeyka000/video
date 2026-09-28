@@ -49,6 +49,13 @@ description: 日常剪片與程式動畫工作台。剪片（剪段、去停頓�
 2. 寫成單一 HTML，畫面必須是時間 t 的純函數（`render(t)`，不用 requestAnimationFrame 累加狀態），預覽和輸出才會一致（pdoom 的核心做法）
 3. 輸出：playwright 開 headless Chrome，逐格設定 t → 截圖 → ffmpeg 合成 mp4。參照 `app/scripts/render.ts` 寫簡化版，預設 1080×1920 或 1920×1080、30fps
 4. 要疊在實拍影片上時輸出透明背景：ProRes 4444（.mov）或 VP9 alpha（.webm）
+5. 已寫好的輸出腳本：`python scripts/render.py page.html -o out/x.mp4 --dur 5`（`--alpha` 透明、`--sheet 0.5,2,4` 先出預覽拼圖、`--audio` 合音軌）
+
+## E. 日系動漫風格
+- 要做動漫風（集中線、衝擊格、明朝體字卡、カットイン、透過光、MAD 節奏等）時，先讀 `references/anime.md`
+- 效果庫：`assets/anime-fx.js`（`AFX.*`），示範：`assets/anime-demo.html`
+- 實拍轉動漫感的 ffmpeg 做法也在 `references/anime.md`
+- 參考庫：`~/video-lab/refs/anime-op`（動畫 OP 範例，程式碼 ISC；歌曲與影像素材不可用）
 
 ## 授權
 - pdoom-video 程式碼 MIT 可商用；`audio/`、`lyrics/`、`data/lyrics.json` 屬原作者，不可使用

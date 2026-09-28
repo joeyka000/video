@@ -75,6 +75,7 @@ sync_ref() {
 }
 sync_ref https://github.com/mexicat/pdoom-video pdoom-video
 sync_ref https://github.com/yihui-dev/awesome-opus5-5-videos awesome-opus5-5-videos
+sync_ref https://github.com/2606156052/Pdoom-video-anime-version anime-op
 
 if [ ${#warnings[@]} -eq 0 ]; then
   echo "video-lab 環境就緒（紀錄：$LOG）"
