@@ -26,3 +26,12 @@ projects/**/*.zip
 projects/**/brief.md
 # 專案試剪內容含個人暱稱，repo 公開前不 commit
 projects/*/tests/
+
+# 素材與含 GPS 的清單不進公開 repo
+projects/*/media/
+projects/**/manifest*.json
+# 專案工作檔含個人資訊（地點、筆記、iCloud 連結），repo 公開期間不 commit
+projects/*/*
+!projects/*/music/
+projects/*/music/*
+!projects/*/music/analysis.json
