@@ -8,3 +8,16 @@ refs/
 node_modules/
 __pycache__/
 .DS_Store
+
+# 專案素材（音樂、照片、影片）不進公開 repo
+projects/**/*.mp3
+projects/**/*.wav
+projects/**/*.m4a
+projects/**/*.mp4
+projects/**/*.mov
+projects/**/*.jpg
+projects/**/*.jpeg
+projects/**/*.png
+projects/**/*.heic
+projects/**/*.webp
+projects/**/*.zip
