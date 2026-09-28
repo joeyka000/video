@@ -24,3 +24,5 @@ projects/**/*.zip
 
 # 專案筆記含個人資訊，不進公開 repo
 projects/**/brief.md
+# 專案試剪內容含個人暱稱，repo 公開前不 commit
+projects/*/tests/
