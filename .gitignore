@@ -1,0 +1,10 @@
+# 輸出（SKILL.md 規定寫到 ./out/）
+out/
+
+# 參考庫由 session-start hook clone 到 ~/video-lab/refs，不進 repo
+refs/
+
+.venv/
+node_modules/
+__pycache__/
+.DS_Store
