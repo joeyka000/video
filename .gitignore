@@ -21,3 +21,6 @@ projects/**/*.png
 projects/**/*.heic
 projects/**/*.webp
 projects/**/*.zip
+
+# 專案筆記含個人資訊，不進公開 repo
+projects/**/brief.md
