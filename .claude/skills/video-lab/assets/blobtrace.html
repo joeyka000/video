@@ -981,10 +981,31 @@ function finishRec() {
   const name = `blobtrace_take${String(takeN).padStart(2, '0')}.${ext}`;
   meta.innerHTML = `<div><b>TAKE ${String(takeN).padStart(2, '0')}</b></div><div>${secs.toFixed(1)} s · ${(blob.size / 1048576).toFixed(2)} MB · ${ext.toUpperCase()}</div><div class="note">${type}</div>`;
   if (!framed) { const a = document.createElement('a'); a.href = url; a.download = name; a.textContent = `下載 ${name}`; meta.append(a); }
-  else { const n = document.createElement('div'); n.className = 'note'; n.textContent = '這個預覽視窗不允許直接下載：在影片上按右鍵「另存影片」，或改用本機的 blobtrace.html 開啟。'; meta.append(n); }
+  else offerSave(meta, blob, name);
   el.append(v, meta); box.append(el);
   syncAll();
   el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+async function offerSave(meta, blob, name) {
+  const note = document.createElement('div'); note.className = 'note';
+  note.textContent = '在影片上按右鍵「另存影片」，或改用本機的 blobtrace.html 開啟後下載。';
+  meta.append(note);
+  let dl = null;
+  try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { dl = null; }
+  if (!dl) return;
+  note.remove();
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small'; b.textContent = `下載 ${name}`;
+  b.addEventListener('click', async () => {
+    try { await dl.save({ filename: name, data: blob }); toast('已交給瀏覽器下載'); }
+    catch (e) {
+      const c = e && e.code;
+      if (c === 'declined') return;
+      if (c === 'rate_limited') { toast('已有一個下載確認視窗，請先處理它'); return; }
+      toast('這個視窗無法下載，請在影片上按右鍵「另存影片」'); b.remove(); meta.append(note);
+    }
+  });
+  meta.append(b);
 }
 
 // ───────────────────────── 主迴圈 ─────────────────────────
