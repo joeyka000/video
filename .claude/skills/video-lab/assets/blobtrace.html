@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blobtrace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&family=VT323&display=swap">
+<style>
+/* layout: 全高儀器面板 — 左邊畫面（canvas + 狀態列 + 錄製結果），右邊控制架；860px 以下改為上下排列 */
+:root {
+  --bg: #0b0d10;
+  --panel: #111419;
+  --panel-2: #161a20;
+  --line: #232932;
+  --line-2: #313944;
+  --fg: #dde3ea;
+  --muted: #8591a0;
+  --dim: #5a6571;
+  --accent: #a6e9ff;
+  --accent-ink: #062631;
+  --rec: #ff5468;
+  --f-ui: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --f-alt: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --f-brand: "Silkscreen", "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 12px/1.45 var(--f-ui); }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.app { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-block: 10px; padding-inline: 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.mark { font-family: var(--f-brand); font-size: 20px; letter-spacing: .08em; color: var(--fg); }
+.mark b { color: var(--accent); font-weight: 400; }
+.sub { color: var(--muted); font-size: 11px; letter-spacing: .06em; }
+.top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  border: 1px solid var(--line-2); background: var(--panel-2); padding: 6px 12px; border-radius: 3px;
+  letter-spacing: .04em; transition: border-color .12s, background .12s;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.rec { border-color: var(--rec); color: var(--rec); }
+.btn.rec[aria-pressed="true"] { background: var(--rec); color: #1a0205; }
+.btn.small { padding: 4px 8px; font-size: 11px; }
+
+.main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 356px; }
+.stage-col { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.stage {
+  position: relative; flex: 1; min-height: 240px; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background:
+    linear-gradient(var(--bg), var(--bg)) padding-box,
+    repeating-linear-gradient(90deg, transparent 0 23px, #12161c 23px 24px);
+}
+.stage canvas {
+  display: block; max-width: 100%; max-height: 100%; width: auto; height: auto;
+  background: #000; box-shadow: 0 0 0 1px var(--line-2);
+}
+.drop {
+  position: absolute; inset: 12px; border: 1px dashed var(--accent); display: flex; align-items: center; justify-content: center;
+  background: rgba(8, 20, 26, .78); color: var(--accent); font-size: 14px; letter-spacing: .1em; pointer-events: none;
+}
+.status {
+  display: flex; flex-wrap: wrap; gap: 4px 18px; padding-block: 8px; padding-inline: 16px;
+  border-top: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  font-variant-numeric: tabular-nums; font-size: 11px; letter-spacing: .04em;
+}
+.status b { color: var(--fg); font-weight: 500; }
+.status .src { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.status .recdot { color: var(--rec); }
+.takes { display: flex; flex-direction: column; gap: 12px; padding-inline: 16px; padding-block: 0 16px; }
+.takes:empty { display: none; }
+.takes h3 { margin: 12px 0 0; font-size: 11px; color: var(--muted); letter-spacing: .12em; font-weight: 500; }
+.take { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 12px; align-items: start; border: 1px solid var(--line); background: var(--panel); padding: 10px; }
+.take video { width: 100%; max-height: 320px; background: #000; display: block; }
+.take .meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-variant-numeric: tabular-nums; }
+.take .meta .note { color: var(--muted); font-size: 11px; }
+.take a { color: var(--accent); }
+
+.panel { min-height: 0; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding-block: 4px 24px; padding-inline: 16px; }
+.sec { border-bottom: 1px solid var(--line); padding-block: 14px; display: flex; flex-direction: column; gap: 10px; }
+.sec:last-child { border-bottom: 0; }
+.sec h2 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .16em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sec h2 .en { color: var(--dim); font-weight: 400; }
+.row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: center; }
+.row > label, .row > .lab { color: var(--muted); font-size: 11px; }
+.hint { color: var(--dim); font-size: 11px; margin: 0; }
+.seg { display: flex; flex-wrap: wrap; gap: 3px; }
+.seg button {
+  flex: 1 1 auto; min-width: 0; border: 1px solid var(--line-2); background: var(--panel-2); padding: 4px 6px; border-radius: 2px; font-size: 11px; white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 4px; }
+.tile {
+  aspect-ratio: 1.35; border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 2px; font-size: 11px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 6px; text-align: left; line-height: 1.2;
+}
+.tile i { font-style: normal; width: 8px; height: 8px; border: 1px solid var(--dim); display: block; }
+.tile[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: #0f2129; }
+.tile[aria-pressed="true"] i { background: var(--accent); border-color: var(--accent); }
+.range { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; align-items: center; }
+.range output { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg); font-size: 11px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+select { background: var(--panel-2); border: 1px solid var(--line-2); padding: 4px 6px; border-radius: 2px; width: 100%; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.check { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); font-size: 11px; cursor: pointer; }
+.check input { accent-color: var(--accent); margin: 0; }
+.swatches { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 3px; }
+.sw { aspect-ratio: 1; border: 1px solid var(--line-2); border-radius: 2px; padding: 0; }
+.sw[aria-pressed="true"] { outline: 2px solid var(--fg); outline-offset: 1px; }
+.sw.rainbow { background: conic-gradient(#f33, #fd3, #3f6, #3cf, #63f, #f3c, #f33); }
+.filebtn { position: relative; overflow: hidden; display: inline-flex; align-items: center; }
+.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.fontseg button[data-v="mono"] { font-family: "JetBrains Mono", monospace; }
+.fontseg button[data-v="plex"] { font-family: "IBM Plex Mono", monospace; }
+.fontseg button[data-v="term"] { font-family: VT323, monospace; font-size: 15px; line-height: 1; }
+.fontseg button[data-v="pixel"] { font-family: Silkscreen, monospace; }
+.fontseg button[data-v="arcade"] { font-family: "Press Start 2P", monospace; font-size: 8px; }
+
+@media (max-width: 860px) {
+  .main { grid-template-columns: minmax(0, 1fr); overflow: auto; }
+  .app { height: auto; min-height: 100%; }
+  .stage-col { overflow: visible; }
+  .stage { min-height: 0; flex: none; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .take { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .btn, .tile { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="mark">BLOB<b>TRACE</b></span>
+      <span class="sub">BLOB TRACKING · 全部在本機瀏覽器運算，不上傳任何檔案</span>
+    </div>
+    <div class="top-actions">
+      <button class="btn primary" id="btnAll" type="button">一鍵全加</button>
+      <button class="btn" id="btnReset" type="button">重設</button>
+      <button class="btn rec" id="btnRec" type="button" aria-pressed="false">● 錄製</button>
+    </div>
+  </header>
+  <main class="main">
+    <section class="stage-col" aria-label="畫面">
+      <div class="stage" id="stage">
+        <canvas id="out" width="1280" height="720" aria-label="追蹤畫面"></canvas>
+        <div class="drop" id="drop" hidden>放開以載入影片或圖片</div>
+      </div>
+      <div class="status" id="status" aria-live="off"></div>
+      <div class="takes" id="takes"></div>
+    </section>
+    <aside class="panel" id="panel" aria-label="控制面板"></aside>
+  </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ───────────────────────── 基本工具 ─────────────────────────
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const ctx2 = (c, rf) => c.getContext('2d', rf ? { willReadFrequently: true } : undefined);
+function hash32(n) { n = Math.imul(n ^ (n >>> 16), 0x45d9f3b); n = Math.imul(n ^ (n >>> 16), 0x45d9f3b); return (n ^ (n >>> 16)) >>> 0; }
+const hashPair = (a, b) => hash32(Math.imul(Math.min(a, b), 73856093) ^ Math.imul(Math.max(a, b), 19349663) ^ 0x9e3779b9);
+const pad3 = n => String(n).padStart(3, '0');
+
+const out = $('#out'), octx = ctx2(out, true);
+const srcC = mk(1280, 720), srcX = ctx2(srcC, true);
+const tmpC = mk(1280, 720), tmpX = ctx2(tmpC, true);
+const regC = mk(1280, 720), regX = ctx2(regC, true);
+const orgC = mk(1280, 720), orgX = ctx2(orgC, true);
+const auxC = mk(1280, 720), auxX = ctx2(auxC, true);
+const tinyC = mk(64, 64), tinyX = ctx2(tinyC, true);
+const detC = mk(160, 90), detX = ctx2(detC, true);
+const maskC = mk(160, 90), maskX = ctx2(maskC, true);
+const demoC = mk(1280, 720), demoX = ctx2(demoC);
+let W = 1280, H = 720;
+
+// ───────────────────────── 設定 ─────────────────────────
+const BASIC = [['basic', '基本'], ['cross', 'Cross'], ['label', '標籤'], ['frame', 'Frame'], ['lframe', 'L-Frame'], ['xframe', 'X-Frame'], ['grid', 'Grid'], ['particle', 'Particle'], ['dash', 'Dash'], ['scope', 'Scope'], ['win', 'Win2K'], ['label2', 'Label 2'], ['glow', 'Glow'], ['backdrop', 'Backdrop'], ['trail', 'Trail']];
+const FILTERS = [['invert', '反轉'], ['glitch', 'Glitch'], ['thermal', 'Thermal'], ['pixel', 'Pixel'], ['tone', 'Tone'], ['blur', 'Blur'], ['dither', 'Dither'], ['zoom', 'Zoom'], ['xray', 'X-Ray'], ['water', 'Water'], ['mask', 'Mask'], ['crt', 'CRT'], ['edge', 'Edge'], ['dots', 'Dots']];
+const FONTS = {
+  mono: ['Mono', '"JetBrains Mono", ui-monospace, monospace', 1],
+  plex: ['Plex', '"IBM Plex Mono", ui-monospace, monospace', 1],
+  term: ['Terminal', 'VT323, ui-monospace, monospace', 1.4],
+  pixel: ['Pixel', 'Silkscreen, ui-monospace, monospace', 1],
+  arcade: ['Arcade', '"Press Start 2P", ui-monospace, monospace', 0.72],
+};
+const PALETTE = ['#ffffff', '#ff3b3b', '#ff7a1a', '#ffc21a', '#f4ff3a', '#9dff3a', '#2cff7a', '#1affd5', '#1ad1ff', '#3a8bff',
+  '#5a4bff', '#a64bff', '#ff4bd8', '#ff4b8b', '#ff9aa8', '#ffd9a8', '#c9f0ff', '#b4b4b4', '#6e6e6e', '#00ff41'];
+const RAINBOW = 20;
+const SUGGEST = { bright: 160, dark: 60, motion: 28 };
+const NS = [16, 32, 64, 128, 256, 512];
+const WORDS = ['ECHO', 'NOVA', 'KILO', 'DELTA', 'SIGMA', 'ORBIT', 'VOID', 'FLUX', 'HALO', 'ZERO', 'OMNI', 'APEX', 'NODE', 'GRID', 'PULSE', 'VECTOR'];
+
+const DEF = {
+  mode: 'bright', th: 160, cmode: 'count', n: 32, single: false, bound: 0, same: false, pad: 6,
+  basic: { basic: true, label: true, lframe: true, trail: true, dash: true },
+  lstyle: 'straight', rate: 0.5, lw: 1,
+  filters: {}, outside: false, blend: false, flicker: false,
+  font: 'mono', lab: 'block', tpos: 'top', tmode: 'random', fsize: 12, text: true, color: 0, separate: false, crazy: false,
+  tone: 'orig', contrast: 1, dots: 'none', dsize: 8, tear: 0, shift: 0, scan: 0,
+  sound: false, voice: 'computer', vol: 0.5,
+};
+const fresh = () => JSON.parse(JSON.stringify(DEF));
+let S = fresh();
+
+// ───────────────────────── 來源 ─────────────────────────
+let src = { kind: 'demo', name: 'DEMO · 內建示範', el: null };
+let paused = false, demoT = 0, objURL = null;
+
+function setSize(sw, sh) {
+  const w = Math.min(1280, Math.round(sw)), h = Math.max(2, Math.round(sh * w / sw));
+  if (w === W && h === H && out.width === w) return;
+  W = w; H = h;
+  for (const c of [out, srcC, tmpC, regC, orgC, auxC]) { c.width = W; c.height = H; }
+  const dh = Math.max(2, Math.round(160 * H / W));
+  detC.width = maskC.width = 160; detC.height = maskC.height = dh;
+  resetTracking();
+}
+
+function loadFile(file) {
+  if (!file) return;
+  const isVid = file.type.startsWith('video/'), isImg = file.type.startsWith('image/');
+  if (!isVid && !isImg) { toast('只支援影片或圖片檔'); return; }
+  if (objURL) URL.revokeObjectURL(objURL);
+  if (src.kind === 'video' && src.el) src.el.pause();
+  objURL = URL.createObjectURL(file);
+  if (isVid) {
+    const v = document.createElement('video');
+    v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.src = objURL;
+    v.addEventListener('loadedmetadata', () => { setSize(v.videoWidth, v.videoHeight); resetTracking(); });
+    v.play().catch(() => {});
+    src = { kind: 'video', name: file.name, el: v };
+  } else {
+    const im = new Image();
+    im.onload = () => { setSize(im.naturalWidth, im.naturalHeight); resetTracking(); };
+    im.src = objURL;
+    src = { kind: 'image', name: file.name, el: im };
+  }
+  paused = false; syncAll();
+}
+
+function backToDemo() {
+  if (src.kind === 'video' && src.el) src.el.pause();
+  if (objURL) { URL.revokeObjectURL(objURL); objURL = null; }
+  src = { kind: 'demo', name: 'DEMO · 內建示範', el: null };
+  paused = false; setSize(1280, 720); resetTracking(); syncAll();
+}
+
+function togglePause() {
+  paused = !paused;
+  if (src.kind === 'video' && src.el) { if (paused) src.el.pause(); else src.el.play().catch(() => {}); }
+  syncAll();
+}
+
+// 內建示範：光球、跳舞的人形、地面透視格線
+const ORBS = [
+  { r: 46, c: [255, 210, 150], ax: 430, ay: 150, fx: 0.31, fy: 0.47, px: 0, py: 1 },
+  { r: 34, c: [150, 220, 255], ax: 520, ay: 120, fx: 0.23, fy: 0.61, px: 2, py: 0.4 },
+  { r: 28, c: [255, 150, 210], ax: 380, ay: 170, fx: 0.43, fy: 0.29, px: 4, py: 2.2 },
+  { r: 40, c: [200, 255, 170], ax: 470, ay: 90, fx: 0.17, fy: 0.53, px: 1.3, py: 3.1 },
+  { r: 22, c: [255, 255, 255], ax: 560, ay: 190, fx: 0.52, fy: 0.37, px: 5, py: 0.2 },
+];
+function drawDemo(t) {
+  const x = demoX, w = 1280, h = 720, hz = 380, vx = 640;
+  const g = x.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#04050a'); g.addColorStop(0.53, '#0b0e17'); g.addColorStop(1, '#07080c');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  // 地面格線（較暗，不會被亮部模式抓到）
+  x.save(); x.strokeStyle = 'rgba(110,135,170,0.42)'; x.lineWidth = 1.2;
+  for (let k = -14; k <= 14; k++) { x.beginPath(); x.moveTo(vx, hz); x.lineTo(vx + k * 170, h + 40); x.stroke(); }
+  const ph = (t * 0.35) % 1;
+  for (let i = 0; i < 14; i++) {
+    const u = (i + ph) / 14, y = hz + (h - hz) * u * u;
+    x.globalAlpha = 0.25 + 0.75 * u; x.beginPath(); x.moveTo(0, y); x.lineTo(w, y); x.stroke();
+  }
+  x.globalAlpha = 1;
+  const hg = x.createLinearGradient(0, hz - 60, 0, hz + 6);
+  hg.addColorStop(0, 'rgba(90,120,170,0)'); hg.addColorStop(1, 'rgba(90,120,170,0.28)');
+  x.fillStyle = hg; x.fillRect(0, hz - 60, w, 66);
+  x.restore();
+  // 光球
+  for (const o of ORBS) {
+    const cx = 640 + o.ax * Math.sin(t * o.fx * 2 + o.px), cy = 250 + o.ay * Math.sin(t * o.fy * 2 + o.py);
+    const rg = x.createRadialGradient(cx, cy, 0, cx, cy, o.r * 2.2);
+    rg.addColorStop(0, 'rgba(255,255,255,1)');
+    rg.addColorStop(0.28, `rgba(${o.c[0]},${o.c[1]},${o.c[2]},1)`);
+    rg.addColorStop(0.5, `rgba(${o.c[0]},${o.c[1]},${o.c[2]},0.35)`);
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = rg; x.beginPath(); x.arc(cx, cy, o.r * 2.2, 0, Math.PI * 2); x.fill();
+  }
+  // 跳舞的人形
+  const bx = 640 + Math.sin(t * 0.9) * 180, bounce = Math.abs(Math.sin(t * 3.2)) * 18;
+  const hip = [bx, 470 - bounce], lean = Math.sin(t * 1.6) * 0.18;
+  const neck = [hip[0] + Math.sin(lean) * 120, hip[1] - Math.cos(lean) * 120];
+  const limb = (p, a1, l1, a2, l2) => { const k = [p[0] + Math.sin(a1) * l1, p[1] + Math.cos(a1) * l1]; return [k, [k[0] + Math.sin(a1 + a2) * l2, k[1] + Math.cos(a1 + a2) * l2]]; };
+  const s1 = Math.sin(t * 3.2), s2 = Math.sin(t * 3.2 + Math.PI);
+  const armL = limb(neck, -2.3 + s1 * 0.9, 62, 0.9 + s1 * 0.6, 58), armR = limb(neck, 2.3 + s2 * 0.9, 62, -0.9 + s2 * 0.6, 58);
+  const legL = limb(hip, -0.35 + s1 * 0.45, 78, 0.35 + Math.max(0, s1) * 0.7, 76), legR = limb(hip, 0.35 + s2 * 0.45, 78, -0.35 - Math.max(0, s2) * 0.7, 76);
+  x.save(); x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#f3efe6'; x.shadowColor = 'rgba(255,240,220,0.6)'; x.shadowBlur = 18;
+  const poly = (pts, lw) => { x.lineWidth = lw; x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) x.lineTo(p[0], p[1]); x.stroke(); };
+  poly([hip, neck], 30);
+  poly([neck, ...armL], 18); poly([neck, ...armR], 18);
+  poly([hip, ...legL], 22); poly([hip, ...legR], 22);
+  x.fillStyle = '#f3efe6'; x.beginPath(); x.arc(neck[0] + Math.sin(lean) * 34, neck[1] - Math.cos(lean) * 34, 25, 0, Math.PI * 2); x.fill();
+  x.restore();
+  // 影子
+  x.fillStyle = 'rgba(0,0,0,0.5)'; x.beginPath(); x.ellipse(bx, 632, 80 - bounce, 12, 0, 0, Math.PI * 2); x.fill();
+}
+
+function drawSource() {
+  if (src.kind === 'demo') { drawDemo(demoT); srcX.drawImage(demoC, 0, 0, W, H); return true; }
+  const el = src.el;
+  if (src.kind === 'video') { if (el.readyState < 2 || !el.videoWidth) return false; srcX.drawImage(el, 0, 0, W, H); return true; }
+  if (src.kind === 'image') { if (!el.complete || !el.naturalWidth) return false; srcX.drawImage(el, 0, 0, W, H); return true; }
+  return false;
+}
+
+// ───────────────────────── 偵測 ─────────────────────────
+let prevLum = null, mask = null, maskW = 160, maskH = 90;
+function resetTracking() { prevLum = null; tracks = []; parts = []; }
+
+function detect() {
+  const w = detC.width, h = detC.height, n = w * h;
+  detX.drawImage(srcC, 0, 0, w, h);
+  const d = detX.getImageData(0, 0, w, h).data;
+  const lum = new Uint8ClampedArray(n);
+  for (let i = 0, j = 0; i < n; i++, j += 4) lum[i] = (d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114) | 0;
+  let m = new Uint8Array(n);
+  const th = S.th;
+  if (S.mode === 'bright') { for (let i = 0; i < n; i++) m[i] = lum[i] > th ? 1 : 0; }
+  else if (S.mode === 'dark') { for (let i = 0; i < n; i++) m[i] = lum[i] < th ? 1 : 0; }
+  else {
+    if (prevLum && prevLum.length === n && !paused) {
+      for (let i = 0; i < n; i++) m[i] = Math.abs(lum[i] - prevLum[i]) > th ? 1 : 0;
+      // 膨脹一次，把破碎的區塊併起來
+      const dm = new Uint8Array(n);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        let v = 0;
+        for (let dy = -1; dy <= 1 && !v; dy++) { const yy = y + dy; if (yy < 0 || yy >= h) continue; for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx >= 0 && xx < w && m[yy * w + xx]) { v = 1; break; } } }
+        dm[y * w + x] = v;
+      }
+      m = dm;
+    } else if (paused && mask && mask.length === n) m = mask;
+  }
+  if (!paused || S.mode !== 'motion') prevLum = lum;
+  mask = m; maskW = w; maskH = h;
+  // 連通區域（BFS，8 鄰接）
+  const lab = new Int32Array(n), q = new Int32Array(n), blobs = [];
+  let id = 0;
+  for (let s = 0; s < n; s++) {
+    if (!m[s] || lab[s]) continue;
+    id++; let qh = 0, qt = 0; q[qt++] = s; lab[s] = id;
+    let minx = w, miny = h, maxx = 0, maxy = 0, sx = 0, sy = 0, cnt = 0;
+    while (qh < qt) {
+      const p = q[qh++], px = p % w, py = (p / w) | 0;
+      cnt++; sx += px; sy += py;
+      if (px < minx) minx = px; if (px > maxx) maxx = px; if (py < miny) miny = py; if (py > maxy) maxy = py;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = py + dy; if (yy < 0 || yy >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = px + dx; if (xx < 0 || xx >= w) continue;
+          const k = yy * w + xx; if (m[k] && !lab[k]) { lab[k] = id; q[qt++] = k; }
+        }
+      }
+    }
+    blobs.push({ minx, miny, maxx, maxy, sx, sy, cnt });
+  }
+  const kx = W / w, ky = H / h;
+  let dets = blobs.map(b => ({
+    x: b.minx * kx, y: b.miny * ky, w: (b.maxx - b.minx + 1) * kx, h: (b.maxy - b.miny + 1) * ky,
+    cx: (b.sx / b.cnt + 0.5) * kx, cy: (b.sy / b.cnt + 0.5) * ky, area: b.cnt * kx * ky,
+  }));
+  dets.sort((a, b) => b.area - a.area);
+  if (S.cmode === 'size') dets = dets.filter(d => d.area >= S.n); else dets = dets.slice(0, S.n);
+  if (S.single) dets = dets.slice(0, 1);
+  if (S.filters.mask) paintMask();
+  return dets;
+}
+
+function paintMask() {
+  const im = maskX.createImageData(maskW, maskH), d = im.data;
+  for (let i = 0, j = 0; i < mask.length; i++, j += 4) if (mask[i]) { d[j] = d[j + 1] = d[j + 2] = 255; d[j + 3] = 255; }
+  maskX.putImageData(im, 0, 0);
+}
+
+// ───────────────────────── 追蹤 ─────────────────────────
+let tracks = [], nextId = 1;
+function track(dets, dt) {
+  const maxD = Math.max(40, W * 0.12), pairs = [];
+  for (let i = 0; i < tracks.length; i++) for (let j = 0; j < dets.length; j++) {
+    const dx = tracks[i].cx - dets[j].cx, dy = tracks[i].cy - dets[j].cy, dd = Math.hypot(dx, dy);
+    if (dd < maxD) pairs.push(dd, i, j);
+  }
+  const idx = []; for (let k = 0; k < pairs.length; k += 3) idx.push(k);
+  idx.sort((a, b) => pairs[a] - pairs[b]);
+  const usedT = new Uint8Array(tracks.length), usedD = new Uint8Array(dets.length);
+  const a = 0.55;
+  for (const k of idx) {
+    const i = pairs[k + 1], j = pairs[k + 2];
+    if (usedT[i] || usedD[j]) continue;
+    usedT[i] = usedD[j] = 1;
+    const t = tracks[i], d = dets[j], ox = t.cx, oy = t.cy;
+    t.cx += (d.cx - t.cx) * a; t.cy += (d.cy - t.cy) * a; t.w += (d.w - t.w) * a; t.h += (d.h - t.h) * a;
+    t.area = d.area; t.vx = t.vx * 0.5 + (t.cx - ox) * 0.5; t.vy = t.vy * 0.5 + (t.cy - oy) * 0.5;
+    t.miss = 0; t.age++;
+    t.trail.push([t.cx, t.cy]); if (t.trail.length > 24) t.trail.shift();
+  }
+  for (let i = 0; i < tracks.length; i++) if (!usedT[i]) tracks[i].miss++;
+  tracks = tracks.filter(t => t.miss <= 4);
+  for (let j = 0; j < dets.length; j++) {
+    if (usedD[j]) continue;
+    const d = dets[j], t = { id: nextId++, cx: d.cx, cy: d.cy, w: d.w, h: d.h, area: d.area, vx: 0, vy: 0, miss: 0, age: 0, trail: [[d.cx, d.cy]] };
+    tracks.push(t);
+    onNewBlob(t);
+  }
+  const vis = tracks.filter(t => t.miss === 0);
+  vis.sort((p, q2) => q2.area - p.area);
+  return vis;
+}
+
+function boxOf(t) {
+  let w = t.w, h = t.h;
+  const b = S.bound;
+  if (S.same) { w = h = b > 0 ? b : 72; }
+  else if (b > 0) { w = Math.max(w, b); h = Math.max(h, b); }
+  w += S.pad * 2; h += S.pad * 2;
+  return { x: t.cx - w / 2, y: t.cy - h / 2, w, h };
+}
+
+// ───────────────────────── 顏色 ─────────────────────────
+function hsl2rgb(hh, s, l) {
+  hh = ((hh % 360) + 360) % 360 / 360;
+  const f = n => { const k = (n + hh * 12) % 12, a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+const hex2rgb = hx => [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
+const PAL_RGB = PALETTE.map(hex2rgb);
+let T = 0;
+function colorOf(t) {
+  if (S.crazy) return hsl2rgb(hash32(t.id * 977 + Math.floor(T * 9)) % 360, 1, 0.6);
+  if (S.separate) return S.color === RAINBOW ? hsl2rgb(T * 80 + t.id * 47, 1, 0.62) : PAL_RGB[(S.color + t.id) % 20];
+  return S.color === RAINBOW ? hsl2rgb(T * 80, 1, 0.62) : PAL_RGB[S.color];
+}
+const css = (c, a = 1) => a >= 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const lumOf = c => (c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114) / 255;
+
+// ───────────────────────── 全畫面效果 ─────────────────────────
+function applyTone() {
+  const im = octx.getImageData(0, 0, W, H), d = im.data, c = S.contrast, tone = S.tone;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+    const y = r * 0.299 + g * 0.587 + b * 0.114;
+    if (tone === 'orig') { r = (r - 128) * c + 128; g = (g - 128) * c + 128; b = (b - 128) * c + 128; }
+    else if (tone === 'bw') { r = g = b = (y - 128) * c + 128; }
+    else if (tone === 'hc') {
+      const k = c * 1.9;
+      r = ((y + (r - y) * 1.45) - 128) * k + 128; g = ((y + (g - y) * 1.45) - 128) * k + 128; b = ((y + (b - y) * 1.45) - 128) * k + 128;
+    } else { r = g = b = ((y - 128) * c + 128) >= 128 ? 255 : 0; }
+    d[i] = r; d[i + 1] = g; d[i + 2] = b;
+  }
+  octx.putImageData(im, 0, 0);
+}
+
+function dotsInto(d, s, w, h, size, kind, x0 = 0, y0 = 0) {
+  // d: 目標像素，s: 來源像素（相同尺寸）
+  const half = size / 2;
+  for (let y = 0; y < h; y++) {
+    const cy = Math.min(h - 1, Math.floor(y / size) * size + (half | 0)), dy = y - cy;
+    for (let x = 0; x < w; x++) {
+      const cx = Math.min(w - 1, Math.floor(x / size) * size + (half | 0)), dx = x - cx;
+      const si = (cy * w + cx) * 4, di = (y * w + x) * 4;
+      const r = s[si], g = s[si + 1], b = s[si + 2], L = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+      let on;
+      if (kind === 'halftone') { const rad = half * Math.sqrt(L) * 1.12; on = dx * dx + dy * dy <= rad * rad; }
+      else if (kind === 'led') { on = Math.abs(dx) <= half * 0.72 && Math.abs(dy) <= half * 0.72; }
+      else { on = Math.abs(dy) <= half * L; }
+      if (on) {
+        const k = kind === 'led' ? 0.35 + 0.65 * L : 1;
+        d[di] = r * k; d[di + 1] = g * k; d[di + 2] = b * k;
+      } else { d[di] = d[di + 1] = d[di + 2] = kind === 'led' ? 8 : 0; }
+      d[di + 3] = 255;
+    }
+  }
+}
+function applyDots() {
+  const im = octx.getImageData(0, 0, W, H), s = new Uint8ClampedArray(im.data);
+  dotsInto(im.data, s, W, H, S.dsize, S.dots);
+  octx.putImageData(im, 0, 0);
+}
+
+function applyTear() {
+  if (Math.random() > 0.3 + S.tear * 0.65) return;
+  tmpX.drawImage(out, 0, 0);
+  const n = 1 + Math.round(S.tear * 9);
+  for (let i = 0; i < n; i++) {
+    const y = Math.random() * H, hh = 4 + Math.random() * (10 + S.tear * 70), off = (Math.random() * 2 - 1) * S.tear * W * 0.12;
+    octx.drawImage(tmpC, 0, y, W, hh, off, y, W, hh);
+    octx.drawImage(tmpC, 0, y, W, hh, off - Math.sign(off) * W, y, W, hh);
+  }
+}
+
+function applyShift() {
+  const s = Math.round(S.shift);
+  const im = octx.getImageData(0, 0, W, H), d = im.data, o = new Uint8ClampedArray(d);
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      const i = (row + x) * 4;
+      d[i] = o[(row + clamp(x - s, 0, W - 1)) * 4];
+      d[i + 2] = o[(row + clamp(x + s, 0, W - 1)) * 4 + 2];
+    }
+  }
+  octx.putImageData(im, 0, 0);
+}
+
+let scanPat = null;
+function drawScan() {
+  if (!scanPat) { const p = mk(1, 3), px = p.getContext('2d'); px.fillStyle = '#000'; px.fillRect(0, 0, 1, 1); scanPat = octx.createPattern(p, 'repeat'); }
+  octx.save(); octx.globalAlpha = S.scan; octx.fillStyle = scanPat; octx.fillRect(0, 0, W, H); octx.restore();
+}
+
+// ───────────────────────── 框內濾鏡 ─────────────────────────
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const THERMAL = (() => {
+  const stops = [[0, [0, 0, 0]], [0.18, [20, 0, 90]], [0.36, [120, 0, 150]], [0.55, [220, 30, 60]], [0.72, [255, 130, 0]], [0.88, [255, 225, 40]], [1, [255, 255, 255]]];
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const u = i / 255; let k = 0; while (k < stops.length - 2 && u > stops[k + 1][0]) k++;
+    const [u0, c0] = stops[k], [u1, c1] = stops[k + 1], f = (u - u0) / (u1 - u0);
+    for (let c = 0; c < 3; c++) lut[i * 3 + c] = c0[c] + (c1[c] - c0[c]) * f;
+  }
+  return lut;
+})();
+function pix(x, w, h, fn) { const im = x.getImageData(0, 0, w, h); fn(im.data, w, h); x.putImageData(im, 0, 0); }
+function downUp(x, w, h, k, smooth) {
+  const tw = Math.max(1, Math.round(w / k)), th = Math.max(1, Math.round(h / k));
+  if (tinyC.width < tw || tinyC.height < th) { tinyC.width = Math.max(tinyC.width, tw); tinyC.height = Math.max(tinyC.height, th); }
+  tinyX.imageSmoothingEnabled = true; tinyX.clearRect(0, 0, tw, th);
+  tinyX.drawImage(x.canvas, 0, 0, w, h, 0, 0, tw, th);
+  x.imageSmoothingEnabled = smooth; x.drawImage(tinyC, 0, 0, tw, th, 0, 0, w, h); x.imageSmoothingEnabled = true;
+}
+
+const FX = {
+  invert(x, w, h) { pix(x, w, h, d => { for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; } }); },
+  glitch(x, w, h) {
+    pix(x, w, h, (d, w2, h2) => {
+      const o = new Uint8ClampedArray(d), k = Math.max(2, Math.round(w2 * 0.025 + Math.random() * 6));
+      for (let y = 0; y < h2; y++) for (let xx = 0; xx < w2; xx++) {
+        const i = (y * w2 + xx) * 4;
+        d[i] = o[(y * w2 + clamp(xx - k, 0, w2 - 1)) * 4]; d[i + 2] = o[(y * w2 + clamp(xx + k, 0, w2 - 1)) * 4 + 2];
+      }
+      const bands = 2 + (Math.random() * 4 | 0);
+      for (let b = 0; b < bands; b++) {
+        const y0 = Math.random() * h2 | 0, bh = 2 + Math.random() * Math.max(3, h2 * 0.12) | 0, off = ((Math.random() * 2 - 1) * w2 * 0.18) | 0;
+        for (let y = y0; y < Math.min(h2, y0 + bh); y++) {
+          const row = new Uint8ClampedArray(d.subarray(y * w2 * 4, (y + 1) * w2 * 4));
+          for (let xx = 0; xx < w2; xx++) { const sx = ((xx - off) % w2 + w2) % w2; d.set(row.subarray(sx * 4, sx * 4 + 4), (y * w2 + xx) * 4); }
+        }
+      }
+    });
+  },
+  thermal(x, w, h) { pix(x, w, h, d => { for (let i = 0; i < d.length; i += 4) { const y = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0; d[i] = THERMAL[y * 3]; d[i + 1] = THERMAL[y * 3 + 1]; d[i + 2] = THERMAL[y * 3 + 2]; } }); },
+  pixel(x, w, h) { downUp(x, w, h, Math.max(4, Math.round(Math.min(w, h) / 10)), false); },
+  tone(x, w, h, c) {
+    const lo = [c[0] * 0.1, c[1] * 0.1, c[2] * 0.14 + 8], hi = [c[0] + (255 - c[0]) * 0.35, c[1] + (255 - c[1]) * 0.35, c[2] + (255 - c[2]) * 0.35];
+    pix(x, w, h, d => { for (let i = 0; i < d.length; i += 4) { const u = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255; d[i] = lo[0] + (hi[0] - lo[0]) * u; d[i + 1] = lo[1] + (hi[1] - lo[1]) * u; d[i + 2] = lo[2] + (hi[2] - lo[2]) * u; } });
+  },
+  blur(x, w, h) { downUp(x, w, h, 5, true); downUp(x, w, h, 3, true); },
+  dither(x, w, h) {
+    pix(x, w, h, (d, w2) => { for (let i = 0, p = 0; i < d.length; i += 4, p++) { const xx = p % w2, yy = (p / w2) | 0, y = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; const v = y > (BAYER[(yy & 3) * 4 + (xx & 3)] + 0.5) * 16 ? 255 : 0; d[i] = d[i + 1] = d[i + 2] = v; } });
+  },
+  zoom(x, w, h) {
+    auxX.clearRect(0, 0, w, h); auxX.drawImage(x.canvas, 0, 0, w, h, 0, 0, w, h);
+    x.drawImage(auxC, w / 4, h / 4, w / 2, h / 2, 0, 0, w, h);
+  },
+  xray(x, w, h) { pix(x, w, h, d => { for (let i = 0; i < d.length; i += 4) { const v = 255 - (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114); const g = Math.pow(v / 255, 1.6) * 255; d[i] = g * 0.55; d[i + 1] = g * 0.88 + 6; d[i + 2] = g * 1.12 + 22; } }); },
+  water(x, w, h) {
+    pix(x, w, h, (d, w2, h2) => {
+      const o = new Uint8ClampedArray(d), A = Math.max(3, w2 * 0.03);
+      for (let y = 0; y < h2; y++) {
+        const ox = Math.round(A * Math.sin(y / 9 + T * 4));
+        for (let xx = 0; xx < w2; xx++) {
+          const oy = Math.round(A * 0.6 * Math.sin(xx / 13 + T * 3));
+          const sx = clamp(xx + ox, 0, w2 - 1), sy = clamp(y + oy, 0, h2 - 1), si = (sy * w2 + sx) * 4, di = (y * w2 + xx) * 4;
+          d[di] = o[si]; d[di + 1] = o[si + 1]; d[di + 2] = o[si + 2];
+        }
+      }
+    });
+  },
+  mask(x, w, h, c, x0, y0) {
+    if (!mask) return;
+    const kx = maskW / W, ky = maskH / H;
+    auxX.clearRect(0, 0, w, h); auxX.imageSmoothingEnabled = false;
+    auxX.drawImage(maskC, x0 * kx, y0 * ky, w * kx, h * ky, 0, 0, w, h);
+    auxX.imageSmoothingEnabled = true;
+    auxX.globalCompositeOperation = 'source-in'; auxX.fillStyle = css(c); auxX.fillRect(0, 0, w, h); auxX.globalCompositeOperation = 'source-over';
+    x.globalAlpha = 0.5; x.drawImage(auxC, 0, 0, w, h, 0, 0, w, h); x.globalAlpha = 1;
+  },
+  crt(x, w, h) {
+    pix(x, w, h, (d, w2, h2) => {
+      for (let y = 0; y < h2; y++) {
+        const sl = y % 3 === 0 ? 0.55 : 1, vy = (y / h2 - 0.5) * 2;
+        for (let xx = 0; xx < w2; xx++) {
+          const i = (y * w2 + xx) * 4, ch = xx % 3, vx = (xx / w2 - 0.5) * 2, vig = Math.max(0, 1 - 0.45 * (vx * vx + vy * vy)) * sl * 1.15;
+          d[i] = d[i] * (ch === 0 ? 1 : 0.35) * vig; d[i + 1] = d[i + 1] * (ch === 1 ? 1 : 0.35) * vig; d[i + 2] = d[i + 2] * (ch === 2 ? 1 : 0.35) * vig;
+        }
+      }
+    });
+  },
+  edge(x, w, h) {
+    pix(x, w, h, (d, w2, h2) => {
+      const L = new Float32Array(w2 * h2);
+      for (let i = 0, p = 0; p < L.length; i += 4, p++) L[p] = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+      for (let y = 0; y < h2; y++) for (let xx = 0; xx < w2; xx++) {
+        const i = (y * w2 + xx) * 4;
+        if (y === 0 || xx === 0 || y === h2 - 1 || xx === w2 - 1) { d[i] = d[i + 1] = d[i + 2] = 0; continue; }
+        const p = y * w2 + xx;
+        const gx = -L[p - w2 - 1] - 2 * L[p - 1] - L[p + w2 - 1] + L[p - w2 + 1] + 2 * L[p + 1] + L[p + w2 + 1];
+        const gy = -L[p - w2 - 1] - 2 * L[p - w2] - L[p - w2 + 1] + L[p + w2 - 1] + 2 * L[p + w2] + L[p + w2 + 1];
+        const v = Math.min(255, Math.hypot(gx, gy) * 0.9);
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+    });
+  },
+  dots(x, w, h) {
+    pix(x, w, h, (d, w2, h2) => { const s = new Uint8ClampedArray(d); dotsInto(d, s, w2, h2, Math.max(4, Math.round(Math.min(w2, h2) / 14)), 'halftone'); });
+  },
+};
+
+function runFilters(x, w, h, c, x0, y0, active) {
+  orgX.clearRect(0, 0, w, h); orgX.drawImage(x.canvas, 0, 0, w, h, 0, 0, w, h);
+  for (const k of active) FX[k](x, w, h, c, x0, y0);
+  if (S.blend) { x.globalAlpha = 0.5; x.drawImage(orgC, 0, 0, w, h, 0, 0, w, h); x.globalAlpha = 1; }
+}
+
+function applyBoxFilters(boxes) {
+  const active = FILTERS.map(f => f[0]).filter(k => S.filters[k]);
+  if (!active.length) return;
+  if (S.outside) {
+    tmpX.drawImage(out, 0, 0);
+    regX.drawImage(out, 0, 0);
+    const c = boxes.length ? boxes[0].c : (S.color === RAINBOW ? hsl2rgb(T * 80, 1, 0.62) : PAL_RGB[S.color]);
+    if (!(S.flicker && Math.random() < 0.2)) runFilters(regX, W, H, c, 0, 0, active);
+    octx.drawImage(regC, 0, 0);
+    for (const b of boxes) {
+      const r = clipRect(b.r); if (!r) continue;
+      octx.drawImage(tmpC, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    }
+    return;
+  }
+  for (const b of boxes) {
+    if (b.skip) continue;
+    const r = clipRect(b.r); if (!r || r.w < 3 || r.h < 3) continue;
+    regX.clearRect(0, 0, r.w, r.h);
+    regX.drawImage(out, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    runFilters(regX, r.w, r.h, b.c, r.x, r.y, active);
+    octx.drawImage(regC, 0, 0, r.w, r.h, r.x, r.y, r.w, r.h);
+  }
+}
+function clipRect(r) {
+  const x = Math.max(0, Math.floor(r.x)), y = Math.max(0, Math.floor(r.y));
+  const x1 = Math.min(W, Math.ceil(r.x + r.w)), y1 = Math.min(H, Math.ceil(r.y + r.h));
+  if (x1 - x < 1 || y1 - y < 1) return null;
+  return { x, y, w: x1 - x, h: y1 - y };
+}
+
+// ───────────────────────── 疊加圖層 ─────────────────────────
+function drawBackdrop(boxes) {
+  octx.save(); octx.beginPath(); octx.rect(0, 0, W, H);
+  for (const b of boxes) octx.rect(b.r.x, b.r.y, b.r.w, b.r.h);
+  octx.fillStyle = 'rgba(0,0,0,0.62)'; octx.fill('evenodd'); octx.restore();
+}
+
+function linkPath(ax, ay, bx, by, seed) {
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+  octx.beginPath();
+  if (S.lstyle === 'straight') { octx.moveTo(ax, ay); octx.lineTo(bx, by); }
+  else if (S.lstyle === 'curve') {
+    const sgn = seed & 1 ? 1 : -1, k = len * 0.22 * sgn;
+    octx.moveTo(ax, ay); octx.quadraticCurveTo((ax + bx) / 2 + nx * k, (ay + by) / 2 + ny * k, bx, by);
+  } else if (S.lstyle === 'wave') {
+    const n = Math.max(12, Math.round(len / 10)), amp = Math.min(10, len * 0.06);
+    for (let i = 0; i <= n; i++) {
+      const u = i / n, off = Math.sin(u * Math.PI * 2 * Math.max(1, len / 90) - T * 6) * amp * Math.sin(u * Math.PI);
+      const px = ax + dx * u + nx * off, py = ay + dy * u + ny * off;
+      if (i) octx.lineTo(px, py); else octx.moveTo(px, py);
+    }
+  } else {
+    const n = 7 + (Math.random() * 6 | 0), jit = len * 0.07;
+    octx.moveTo(ax, ay);
+    for (let i = 1; i < n; i++) { const u = i / n, j = (Math.random() * 2 - 1) * jit; octx.lineTo(ax + dx * u + nx * j, ay + dy * u + ny * j); }
+    octx.lineTo(bx, by);
+  }
+}
+function drawLinks(boxes) {
+  if (S.rate <= 0 || boxes.length < 2) return;
+  const bs = boxes.slice(0, 60);
+  octx.save();
+  octx.lineWidth = S.lw; octx.lineCap = 'round'; octx.lineJoin = 'round';
+  if (S.basic.dash) { octx.setLineDash([6, 5]); octx.lineDashOffset = -T * 30; }
+  if (S.lstyle === 'lightning') { octx.shadowBlur = 8; }
+  for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+    const a = bs[i], b = bs[j], hh = hashPair(a.t.id, b.t.id);
+    if ((hh % 10000) / 10000 >= S.rate) continue;
+    if (a.hide || b.hide) continue;
+    octx.strokeStyle = css(a.c, 0.85); if (S.lstyle === 'lightning') octx.shadowColor = css(a.c);
+    linkPath(a.t.cx, a.t.cy, b.t.cx, b.t.cy, hh);
+    octx.stroke();
+  }
+  octx.restore();
+}
+
+function drawTrails(boxes) {
+  octx.save(); octx.lineWidth = Math.max(1, S.lw); octx.lineCap = 'round';
+  for (const b of boxes) {
+    const tr = b.t.trail; if (tr.length < 2) continue;
+    for (let i = 1; i < tr.length; i++) {
+      octx.strokeStyle = css(b.c, (i / tr.length) * 0.9);
+      octx.beginPath(); octx.moveTo(tr[i - 1][0], tr[i - 1][1]); octx.lineTo(tr[i][0], tr[i][1]); octx.stroke();
+    }
+    const p = tr[0]; octx.fillStyle = css(b.c, 0.5); octx.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3);
+  }
+  octx.restore();
+}
+
+let parts = [];
+function updateParticles(boxes, dt) {
+  if (S.basic.particle) {
+    for (const b of boxes) {
+      if (b.hide) continue;
+      const r = b.r;
+      for (let k = 0; k < 3; k++) {
+        if (parts.length > 1600) break;
+        const side = Math.random() * 4 | 0, u = Math.random();
+        let x, y, vx, vy;
+        if (side === 0) { x = r.x + r.w * u; y = r.y; vx = 0; vy = -1; }
+        else if (side === 1) { x = r.x + r.w; y = r.y + r.h * u; vx = 1; vy = 0; }
+        else if (side === 2) { x = r.x + r.w * u; y = r.y + r.h; vx = 0; vy = 1; }
+        else { x = r.x; y = r.y + r.h * u; vx = -1; vy = 0; }
+        const sp = 40 + Math.random() * 150, life = 0.5 + Math.random() * 0.7;
+        parts.push({ x, y, vx: vx * sp + (Math.random() - 0.5) * 60, vy: vy * sp + (Math.random() - 0.5) * 60, life, max: life, c: b.c, s: 1.5 + Math.random() * 2 });
+      }
+    }
+  }
+  if (!parts.length) return;
+  octx.save();
+  const keep = [];
+  for (const p of parts) {
+    p.life -= dt; if (p.life <= 0) continue;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.97; p.vy *= 0.97;
+    octx.fillStyle = css(p.c, p.life / p.max); octx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+    keep.push(p);
+  }
+  parts = keep;
+  octx.restore();
+}
+
+function fontStr(px) { const f = FONTS[S.font]; return `${Math.round(px * f[2])}px ${f[1]}`; }
+
+function drawWin(b, col) {
+  const r = b.r, tb = 18, x = r.x, y = r.y - tb;
+  octx.save();
+  octx.lineWidth = 1;
+  // 外框（立體邊）
+  octx.fillStyle = '#d4d0c8'; octx.fillRect(x - 3, y - 3, r.w + 6, 3); octx.fillRect(x - 3, y - 3, 3, r.h + tb + 6); octx.fillRect(x + r.w, y - 3, 3, r.h + tb + 6); octx.fillRect(x - 3, r.y + r.h, r.w + 6, 3);
+  octx.strokeStyle = '#ffffff'; octx.beginPath(); octx.moveTo(x - 3.5, r.y + r.h + 3); octx.lineTo(x - 3.5, y - 3.5); octx.lineTo(x + r.w + 3, y - 3.5); octx.stroke();
+  octx.strokeStyle = '#404040'; octx.beginPath(); octx.moveTo(x + r.w + 3.5, y - 3); octx.lineTo(x + r.w + 3.5, r.y + r.h + 3.5); octx.lineTo(x - 3, r.y + r.h + 3.5); octx.stroke();
+  const g = octx.createLinearGradient(x, 0, x + r.w, 0); g.addColorStop(0, '#0a246a'); g.addColorStop(1, '#a6caf0');
+  octx.fillStyle = g; octx.fillRect(x, y, r.w, tb);
+  if (S.text) {
+    octx.fillStyle = '#fff'; octx.font = 'bold 11px Tahoma, "Segoe UI", sans-serif'; octx.textBaseline = 'middle';
+    octx.save(); octx.beginPath(); octx.rect(x, y, Math.max(0, r.w - 50), tb); octx.clip();
+    octx.fillText(`blob_${pad3(b.t.id)}.exe`, x + 4, y + tb / 2 + 0.5); octx.restore();
+  }
+  for (let i = 0; i < 3; i++) {
+    const bx = x + r.w - 16 * (3 - i) - 2, by = y + 2;
+    if (bx < x + 2) continue;
+    octx.fillStyle = '#d4d0c8'; octx.fillRect(bx, by, 14, 14);
+    octx.strokeStyle = '#fff'; octx.strokeRect(bx + 0.5, by + 0.5, 13, 13);
+    octx.strokeStyle = '#404040'; octx.beginPath(); octx.moveTo(bx + 14, by); octx.lineTo(bx + 14, by + 14); octx.lineTo(bx, by + 14); octx.stroke();
+    octx.strokeStyle = '#000'; octx.beginPath();
+    if (i === 0) { octx.moveTo(bx + 4, by + 10.5); octx.lineTo(bx + 10, by + 10.5); }
+    else if (i === 1) { octx.rect(bx + 3.5, by + 3.5, 7, 7); }
+    else { octx.moveTo(bx + 4, by + 4); octx.lineTo(bx + 10, by + 10); octx.moveTo(bx + 10, by + 4); octx.lineTo(bx + 4, by + 10); }
+    octx.stroke();
+  }
+  octx.strokeStyle = css(col); octx.lineWidth = S.lw; octx.strokeRect(r.x, r.y, r.w, r.h);
+  octx.restore();
+}
+
+function drawBoxes(boxes) {
+  const lw = S.lw;
+  octx.save(); octx.lineJoin = 'miter';
+  for (const b of boxes) {
+    if (b.hide) continue;
+    const { x, y, w, h } = b.r, c = css(b.c), cx = b.t.cx, cy = b.t.cy;
+    octx.strokeStyle = c; octx.fillStyle = c; octx.lineWidth = lw; octx.setLineDash([]);
+    if (S.basic.glow) { octx.save(); octx.shadowColor = c; octx.shadowBlur = 16; octx.lineWidth = lw * 1.5; octx.strokeRect(x, y, w, h); octx.strokeRect(x, y, w, h); octx.restore(); }
+    if (S.basic.basic) octx.strokeRect(x, y, w, h);
+    if (S.basic.frame) { octx.lineWidth = lw * 3; octx.strokeRect(x, y, w, h); octx.lineWidth = lw; octx.strokeRect(x + 5 + lw, y + 5 + lw, Math.max(0, w - 10 - lw * 2), Math.max(0, h - 10 - lw * 2)); }
+    if (S.basic.lframe) {
+      const L = Math.max(6, Math.min(w, h) * 0.24); octx.lineWidth = lw * 2; octx.beginPath();
+      octx.moveTo(x, y + L); octx.lineTo(x, y); octx.lineTo(x + L, y);
+      octx.moveTo(x + w - L, y); octx.lineTo(x + w, y); octx.lineTo(x + w, y + L);
+      octx.moveTo(x + w, y + h - L); octx.lineTo(x + w, y + h); octx.lineTo(x + w - L, y + h);
+      octx.moveTo(x + L, y + h); octx.lineTo(x, y + h); octx.lineTo(x, y + h - L);
+      octx.stroke(); octx.lineWidth = lw;
+    }
+    if (S.basic.xframe) { octx.globalAlpha = 0.75; octx.beginPath(); octx.moveTo(x, y); octx.lineTo(x + w, y + h); octx.moveTo(x + w, y); octx.lineTo(x, y + h); octx.stroke(); octx.globalAlpha = 1; }
+    if (S.basic.grid) {
+      octx.globalAlpha = 0.55; octx.beginPath();
+      for (let i = 1; i < 4; i++) { octx.moveTo(x + w * i / 4, y); octx.lineTo(x + w * i / 4, y + h); octx.moveTo(x, y + h * i / 4); octx.lineTo(x + w, y + h * i / 4); }
+      octx.stroke(); octx.globalAlpha = 1;
+    }
+    if (S.basic.cross) { const k = Math.max(5, Math.min(12, Math.min(w, h) * 0.2)); octx.beginPath(); octx.moveTo(cx - k, cy); octx.lineTo(cx + k, cy); octx.moveTo(cx, cy - k); octx.lineTo(cx, cy + k); octx.stroke(); }
+    if (S.basic.scope) {
+      const R = Math.max(w, h) * 0.58;
+      octx.beginPath(); octx.arc(cx, cy, R, 0, Math.PI * 2); octx.stroke();
+      octx.save(); octx.setLineDash([3, 4]); octx.beginPath(); octx.arc(cx, cy, R * 0.45, 0, Math.PI * 2); octx.stroke(); octx.restore();
+      octx.beginPath();
+      for (let a = 0; a < 360; a += 15) {
+        const rad = a * Math.PI / 180, l = a % 90 === 0 ? 12 : a % 45 === 0 ? 8 : 4;
+        octx.moveTo(cx + Math.cos(rad) * R, cy + Math.sin(rad) * R); octx.lineTo(cx + Math.cos(rad) * (R - l), cy + Math.sin(rad) * (R - l));
+      }
+      for (let a = 0; a < 4; a++) { const rad = a * Math.PI / 2 + T * 0.6; octx.moveTo(cx + Math.cos(rad) * (R + 4), cy + Math.sin(rad) * (R + 4)); octx.lineTo(cx + Math.cos(rad) * (R + 16), cy + Math.sin(rad) * (R + 16)); }
+      octx.stroke();
+    }
+    if (S.basic.win) drawWin(b, b.c);
+  }
+  octx.restore();
+}
+
+function labelText(t) {
+  const id = '#' + pad3(t.id);
+  if (S.tmode === 'random') { const hh = hash32(t.id * 2654435761); return `${WORDS[hh % WORDS.length]} ${(hh >>> 8 & 0xffff).toString(16).toUpperCase().padStart(4, '0')}`; }
+  if (S.tmode === 'pos') return `${id} ${(t.cx / W).toFixed(3)},${(t.cy / H).toFixed(3)}`;
+  return `${id} A:${Math.round(t.area)}`;
+}
+function drawLabels(boxes) {
+  if (!S.text) return;
+  octx.save(); octx.textBaseline = 'middle'; octx.setLineDash([]);
+  const fs = S.fsize, font = fontStr(fs);
+  for (const b of boxes) {
+    if (b.hide) continue;
+    const c = b.c, r = b.r;
+    if (S.basic.label) {
+      const txt = labelText(b.t);
+      octx.font = font;
+      const tw = octx.measureText(txt).width, ph = Math.round(fs * 0.5), bh = fs + ph, bw = tw + ph * 2;
+      let lx, ly;
+      if (S.tpos === 'center') { lx = b.t.cx - bw / 2; ly = b.t.cy - bh / 2; }
+      else if (S.tpos === 'top') { lx = r.x; ly = r.y - bh - (S.basic.win ? 21 : 2); }
+      else { lx = r.x; ly = r.y + r.h + 2; }
+      lx = clamp(lx, 0, W - bw); ly = clamp(ly, 0, H - bh);
+      if (S.lab === 'block') { octx.fillStyle = css(c); octx.fillRect(lx, ly, bw, bh); octx.fillStyle = lumOf(c) > 0.55 ? '#05070a' : '#ffffff'; }
+      else if (S.lab === 'outline') { octx.strokeStyle = css(c); octx.lineWidth = 1; octx.strokeRect(lx + 0.5, ly + 0.5, bw - 1, bh - 1); octx.fillStyle = css(c); }
+      else { octx.fillStyle = css(c); octx.shadowColor = 'rgba(0,0,0,0.85)'; octx.shadowBlur = 3; }
+      octx.fillText(txt, lx + ph, ly + bh / 2 + 0.5);
+      octx.shadowBlur = 0;
+    }
+    if (S.basic.label2) {
+      const t = b.t, sp = Math.hypot(t.vx, t.vy);
+      const lines = [['ID', '#' + pad3(t.id)], ['POS', `${(t.cx / W).toFixed(2)},${(t.cy / H).toFixed(2)}`], ['SIZ', `${Math.round(r.w)}x${Math.round(r.h)}`], ['AREA', String(Math.round(t.area))], ['SPD', sp.toFixed(1)]];
+      const f2 = Math.max(9, fs - 2); octx.font = fontStr(f2);
+      const lh = Math.round(f2 * 1.35), kw = octx.measureText('AREA ').width, vw = Math.max(...lines.map(l => octx.measureText(l[1]).width));
+      const cw = kw + vw + 14, chh = lh * lines.length + 8;
+      let cx = r.x + r.w + 8, cy = r.y;
+      if (cx + cw > W) cx = r.x - cw - 8;
+      cx = clamp(cx, 0, W - cw); cy = clamp(cy, 0, H - chh);
+      octx.fillStyle = 'rgba(4,6,9,0.78)'; octx.fillRect(cx, cy, cw, chh);
+      octx.fillStyle = css(c); octx.fillRect(cx, cy, 2, chh);
+      octx.strokeStyle = css(c, 0.6); octx.lineWidth = 1; octx.beginPath(); octx.moveTo(r.x + r.w, r.y + 0.5); octx.lineTo(cx > r.x ? cx : cx + cw, cy + 0.5); octx.stroke();
+      lines.forEach((l, i) => {
+        const yy = cy + 4 + lh * i + lh / 2;
+        octx.fillStyle = 'rgba(200,210,220,0.7)'; octx.fillText(l[0], cx + 8, yy);
+        octx.fillStyle = css(c); octx.fillText(l[1], cx + 8 + kw, yy);
+      });
+    }
+  }
+  octx.restore();
+}
+
+// ───────────────────────── 音訊 ─────────────────────────
+let AC = null, master = null, recDest = null, customBuf = null, customName = '', sndTimes = [];
+function ensureAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return true; }
+  const Ctor = window.AudioContext || window.webkitAudioContext; if (!Ctor) { toast('這個瀏覽器不支援 Web Audio'); return false; }
+  AC = new Ctor(); master = AC.createGain(); master.gain.value = S.vol; master.connect(AC.destination);
+  if (AC.createMediaStreamDestination) { recDest = AC.createMediaStreamDestination(); master.connect(recDest); }
+  return true;
+}
+function onNewBlob(t) {
+  if (!S.sound || !AC || paused) return;
+  const now = performance.now();
+  sndTimes = sndTimes.filter(x => now - x < 1000);
+  if (sndTimes.length >= 14) return;
+  sndTimes.push(now);
+  playVoice(t.cx / W, t.cy / H);
+}
+function playVoice(xn, yn) {
+  const t0 = AC.currentTime + 0.005, f = 170 * Math.pow(2, (1 - clamp(yn, 0, 1)) * 3.3);
+  let out2 = master;
+  if (AC.createStereoPanner) { const p = AC.createStereoPanner(); p.pan.value = clamp(xn * 2 - 1, -1, 1); p.connect(master); out2 = p; }
+  const g = AC.createGain(); g.connect(out2);
+  if (S.voice === 'custom' && customBuf) {
+    const s = AC.createBufferSource(); s.buffer = customBuf; s.playbackRate.value = 0.6 + (1 - yn) * 1.1;
+    const dur = Math.min(1.2, customBuf.duration);
+    g.gain.setValueAtTime(0.9, t0); g.gain.setValueAtTime(0.9, t0 + Math.max(0, dur / s.playbackRate.value - 0.05)); g.gain.linearRampToValueAtTime(0, t0 + dur / s.playbackRate.value);
+    s.connect(g); s.start(t0, 0, dur); return;
+  }
+  const o = AC.createOscillator();
+  if (S.voice === 'computer') {
+    o.type = 'square'; o.frequency.setValueAtTime(f, t0); o.frequency.setValueAtTime(f * 1.5, t0 + 0.035); o.frequency.setValueAtTime(f * 1.25, t0 + 0.07);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.14, t0 + 0.004); g.gain.setValueAtTime(0.14, t0 + 0.09); g.gain.linearRampToValueAtTime(0, t0 + 0.1);
+    o.start(t0); o.stop(t0 + 0.12);
+  } else if (S.voice === 'bird') {
+    o.type = 'sine'; o.frequency.setValueAtTime(f * 1.2, t0); o.frequency.exponentialRampToValueAtTime(f * 2.6, t0 + 0.09); o.frequency.exponentialRampToValueAtTime(f * 1.9, t0 + 0.16); o.frequency.exponentialRampToValueAtTime(f * 3.0, t0 + 0.22);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.28, t0 + 0.015); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.26);
+    o.start(t0); o.stop(t0 + 0.28);
+  } else {
+    o.type = 'sine'; o.frequency.setValueAtTime(f, t0);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.32, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+    o.start(t0); o.stop(t0 + 0.2);
+  }
+  o.connect(g);
+}
+async function loadSound(file) {
+  if (!file || !ensureAudio()) return;
+  try {
+    const buf = await file.arrayBuffer();
+    customBuf = await new Promise((res, rej) => AC.decodeAudioData(buf, res, rej));
+    customName = file.name; S.voice = 'custom'; syncAll(); toast(`已載入音效：${file.name}`);
+  } catch (e) { toast('無法解碼這個音效檔'); }
+}
+
+// ───────────────────────── 錄製 ─────────────────────────
+let rec = null, chunks = [], recT0 = 0, recMime = '', takeN = 0;
+const framed = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+function startRec() {
+  if (!window.MediaRecorder || !out.captureStream) { toast('這個瀏覽器不支援錄製（需要 MediaRecorder）'); return; }
+  const stream = out.captureStream(30);
+  let hasAudio = false;
+  if (S.sound && recDest) { for (const tr of recDest.stream.getAudioTracks()) stream.addTrack(tr); hasAudio = true; }
+  const cands = (hasAudio ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'] : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
+    .concat(hasAudio ? ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4'] : ['video/mp4;codecs=avc1.42E01E', 'video/mp4']);
+  recMime = cands.find(m => MediaRecorder.isTypeSupported(m)) || '';
+  try { rec = new MediaRecorder(stream, recMime ? { mimeType: recMime, videoBitsPerSecond: 8e6 } : undefined); }
+  catch (e) { toast('無法開始錄製'); rec = null; return; }
+  chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = finishRec;
+  rec.start(250); recT0 = performance.now(); syncAll();
+}
+function stopRec() { if (rec && rec.state !== 'inactive') rec.stop(); }
+function finishRec() {
+  const type = (rec && rec.mimeType) || recMime || 'video/webm';
+  const blob = new Blob(chunks, { type }), url = URL.createObjectURL(blob);
+  const secs = (performance.now() - recT0) / 1000, ext = type.includes('mp4') ? 'mp4' : 'webm';
+  rec = null; takeN++;
+  const box = $('#takes');
+  if (!box.querySelector('h3')) { const h = document.createElement('h3'); h.textContent = '錄製結果'; box.append(h); }
+  const el = document.createElement('div'); el.className = 'take';
+  const v = document.createElement('video'); v.src = url; v.controls = true; v.loop = true; v.playsInline = true; v.muted = false;
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const name = `blobtrace_take${String(takeN).padStart(2, '0')}.${ext}`;
+  meta.innerHTML = `<div><b>TAKE ${String(takeN).padStart(2, '0')}</b></div><div>${secs.toFixed(1)} s · ${(blob.size / 1048576).toFixed(2)} MB · ${ext.toUpperCase()}</div><div class="note">${type}</div>`;
+  if (!framed) { const a = document.createElement('a'); a.href = url; a.download = name; a.textContent = `下載 ${name}`; meta.append(a); }
+  else { const n = document.createElement('div'); n.className = 'note'; n.textContent = '這個預覽視窗不允許直接下載：在影片上按右鍵「另存影片」，或改用本機的 blobtrace.html 開啟。'; meta.append(n); }
+  el.append(v, meta); box.append(el);
+  syncAll();
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// ───────────────────────── 主迴圈 ─────────────────────────
+let last = performance.now(), fps = 60, lastBoxes = [], flashK = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  fps = fps * 0.92 + (1 / Math.max(dt, 1e-3)) * 0.08;
+  T = now / 1000;
+  if (!paused) demoT += dt;
+  if (!drawSource()) { drawStatus(); return; }
+  const dets = detect();
+  const vis = track(dets, dt);
+  const boxes = vis.map(t => ({ t, r: boxOf(t), c: colorOf(t), hide: S.flicker && Math.random() < 0.14, skip: S.flicker && Math.random() < 0.25 }));
+  lastBoxes = boxes;
+  octx.drawImage(srcC, 0, 0);
+  if (S.tone !== 'orig' || S.contrast !== 1) applyTone();
+  if (S.dots !== 'none') applyDots();
+  applyBoxFilters(boxes);
+  if (S.tear > 0) applyTear();
+  if (S.shift > 0) applyShift();
+  if (S.basic.backdrop) drawBackdrop(boxes);
+  drawLinks(boxes);
+  if (S.basic.trail) drawTrails(boxes);
+  updateParticles(boxes, paused ? 0 : dt);
+  drawBoxes(boxes);
+  drawLabels(boxes);
+  if (S.scan > 0) drawScan();
+  if (S.flicker && Math.random() < 0.012) flashK = 1;
+  if (flashK > 0.02) { octx.fillStyle = `rgba(255,255,255,${flashK * 0.85})`; octx.fillRect(0, 0, W, H); flashK *= 0.45; } else flashK = 0;
+  drawStatus();
+}
+
+let statusTick = 0;
+function fxCount() {
+  let n = Object.values(S.basic).filter(Boolean).length + Object.values(S.filters).filter(Boolean).length;
+  if (S.tone !== 'orig') n++; if (S.dots !== 'none') n++; if (S.tear > 0) n++; if (S.shift > 0) n++; if (S.scan > 0) n++;
+  return n;
+}
+function drawStatus() {
+  const now = performance.now(); if (now - statusTick < 200) return; statusTick = now;
+  const recS = rec ? `<span class="recdot">● REC ${((now - recT0) / 1000).toFixed(1)}s</span>` : '';
+  $('#status').innerHTML = `<span>BLOBS <b>${lastBoxes.length}</b></span><span>FPS <b>${Math.round(fps)}</b></span><span>RES <b>${W}×${H}</b></span><span>FX <b>${fxCount()}</b></span>${recS}<span class="src">SRC <b>${escapeHtml(src.name)}</b>${paused ? ' · 暫停中' : ''}</span>`;
+}
+const escapeHtml = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+let toastT = null;
+function toast(msg) {
+  const st = $('#status'); let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.style.cssText = 'position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#1b222a;border:1px solid #313944;color:#dde3ea;padding:8px 14px;font:12px var(--f-ui);z-index:10;max-width:calc(100% - 32px)'; document.body.append(el); }
+  el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+// ───────────────────────── 控制面板 ─────────────────────────
+const panel = $('#panel'), binds = [];
+const syncAll = () => { for (const f of binds) f(); drawStatus(); };
+function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+function section(title, en) { const s = el('section', 'sec'); s.append(el('h2', null, `<span>${title}</span><span class="en">${en}</span>`)); panel.append(s); return s; }
+function row(parent, label, ctrl, forId) { const r = el('div', 'row'); const l = el(forId ? 'label' : 'span', 'lab', label); if (forId) l.htmlFor = forId; r.append(l, ctrl); parent.append(r); return r; }
+function seg(id, get, set, opts, cls) {
+  const d = el('div', 'seg' + (cls ? ' ' + cls : '')); d.id = id; d.setAttribute('role', 'group');
+  for (const [v, lab] of opts) {
+    const b = el('button', null, lab); b.type = 'button'; b.dataset.v = v;
+    b.addEventListener('click', () => { set(v); syncAll(); });
+    d.append(b);
+  }
+  binds.push(() => { for (const b of d.children) b.setAttribute('aria-pressed', String(String(get()) === b.dataset.v)); });
+  return d;
+}
+function range(id, key, min, max, step, fmt) {
+  const d = el('div', 'range'), i = el('input'), o = el('output');
+  i.type = 'range'; i.id = id; i.min = min; i.max = max; i.step = step;
+  i.addEventListener('input', () => { S[key] = parseFloat(i.value); o.textContent = fmt ? fmt(S[key]) : S[key]; });
+  binds.push(() => { i.value = S[key]; o.textContent = fmt ? fmt(S[key]) : S[key]; });
+  d.append(i, o); return d;
+}
+function check(id, label, get, set) {
+  const l = el('label', 'check'), i = el('input'); i.type = 'checkbox'; i.id = id;
+  i.addEventListener('change', () => { set(i.checked); syncAll(); });
+  binds.push(() => { i.checked = !!get(); });
+  l.append(i, document.createTextNode(label)); return l;
+}
+function tiles(id, list, obj) {
+  const d = el('div', 'tiles'); d.id = id;
+  for (const [k, lab] of list) {
+    const b = el('button', 'tile', `<i aria-hidden="true"></i><span>${lab}</span>`); b.type = 'button'; b.dataset.k = k;
+    b.addEventListener('click', () => { S[obj][k] = !S[obj][k]; syncAll(); });
+    d.append(b);
+  }
+  binds.push(() => { for (const b of d.children) b.setAttribute('aria-pressed', String(!!S[obj][b.dataset.k])); });
+  return d;
+}
+
+function buildPanel() {
+  // 來源
+  let s = section('來源', 'SOURCE');
+  const br = el('div', 'btnrow');
+  const fb = el('label', 'btn filebtn', '上傳影片／圖片'); const fi = el('input'); fi.type = 'file'; fi.id = 'fileIn'; fi.accept = 'video/*,image/*';
+  fi.addEventListener('change', () => { loadFile(fi.files[0]); fi.value = ''; }); fb.append(fi);
+  const bp = el('button', 'btn'); bp.type = 'button'; bp.id = 'btnPause'; bp.addEventListener('click', togglePause);
+  binds.push(() => { bp.textContent = paused ? '播放' : '暫停'; });
+  const bd = el('button', 'btn', '回到示範影像'); bd.type = 'button'; bd.id = 'btnDemo'; bd.addEventListener('click', backToDemo);
+  br.append(fb, bp, bd); s.append(br);
+  s.append(el('p', 'hint', '也可以把檔案直接拖曳到畫面上。影片靜音並循環播放；處理畫面最寬 1280px，偵測用 160 格寬的縮圖。'));
+
+  // 偵測與追蹤
+  s = section('偵測與追蹤', 'DETECT');
+  row(s, '追蹤依據', seg('segMode', () => S.mode, v => { S.mode = v; S.th = SUGGEST[v]; resetTracking(); }, [['bright', '亮部'], ['dark', '暗部'], ['motion', '動態']]));
+  row(s, '閾值', range('rTh', 'th', 1, 254, 1), 'rTh');
+  const nc = el('div'); nc.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:6px';
+  const nsel = el('select'); nsel.id = 'selN'; for (const n of NS) nsel.append(new Option(String(n), String(n)));
+  nsel.addEventListener('change', () => { S.n = parseInt(nsel.value, 10); syncAll(); }); binds.push(() => { nsel.value = String(S.n); });
+  nc.append(seg('segCmode', () => S.cmode, v => { S.cmode = v; }, [['size', '按大小'], ['count', '按數量']]), nsel);
+  row(s, 'Blob 數量', nc);
+  s.append(el('p', 'hint', '按大小：只留面積 ≥ N px²；按數量：由大到小最多留 N 個。'));
+  row(s, '邊界大小', range('rBound', 'bound', 0, 240, 4, v => v === 0 ? '自動' : v), 'rBound');
+  row(s, '框線外擴', range('rPad', 'pad', 0, 40, 1, v => v + 'px'), 'rPad');
+  const c1 = el('div', 'checks');
+  c1.append(check('cSingle', '單一追蹤（只追最大）', () => S.single, v => { S.single = v; }), check('cSame', '相同大小', () => S.same, v => { S.same = v; }));
+  s.append(c1);
+
+  // 基本效果
+  s = section('基本效果', 'BOX FX');
+  const allB = el('button', 'btn small', '全選'); allB.type = 'button'; allB.id = 'allBasic';
+  allB.addEventListener('click', () => { const on = !BASIC.every(([k]) => S.basic[k]); for (const [k] of BASIC) S.basic[k] = on; syncAll(); });
+  binds.push(() => { allB.textContent = BASIC.every(([k]) => S.basic[k]) ? '全部取消' : '全選'; });
+  s.querySelector('h2').append(allB);
+  s.append(tiles('tilesBasic', BASIC, 'basic'));
+
+  // 連線
+  s = section('連線', 'LINKS');
+  row(s, '線條樣式', seg('segLine', () => S.lstyle, v => { S.lstyle = v; }, [['straight', '直線'], ['curve', '曲線'], ['wave', '波浪'], ['lightning', '閃電']]));
+  row(s, '連接率', seg('segRate', () => S.rate, v => { S.rate = parseFloat(v); }, [['0', '0'], ['0.25', '.25'], ['0.5', '.5'], ['0.75', '.75'], ['1', '1']]));
+  row(s, '線條寬度', range('rLw', 'lw', 0.5, 8, 0.5, v => v + 'px'), 'rLw');
+  const c2 = el('div', 'checks'); c2.append(check('cDash', '虛線（與 Dash 連動）', () => S.basic.dash, v => { S.basic.dash = v; })); s.append(c2);
+
+  // 濾鏡效果
+  s = section('濾鏡效果', 'FILTERS');
+  const allF = el('button', 'btn small', '全選'); allF.type = 'button'; allF.id = 'allFilters';
+  allF.addEventListener('click', () => { const on = !FILTERS.every(([k]) => S.filters[k]); for (const [k] of FILTERS) S.filters[k] = on; syncAll(); });
+  binds.push(() => { allF.textContent = FILTERS.every(([k]) => S.filters[k]) ? '全部取消' : '全選'; });
+  s.querySelector('h2').append(allF);
+  s.append(tiles('tilesFilters', FILTERS, 'filters'));
+  const c3 = el('div', 'checks');
+  c3.append(check('cOutside', '反轉（改套在框外）', () => S.outside, v => { S.outside = v; }), check('cBlend', '融合', () => S.blend, v => { S.blend = v; }), check('cFlicker', '閃爍', () => S.flicker, v => { S.flicker = v; }));
+  s.append(c3);
+  s.append(el('p', 'hint', 'Tone 用下方調色盤選的顏色做雙色調。'));
+
+  // 顏色與文字
+  s = section('顏色與文字', 'COLOR · TEXT');
+  row(s, '字型', seg('segFont', () => S.font, v => { S.font = v; }, Object.entries(FONTS).map(([k, f]) => [k, f[0]]), 'fontseg'));
+  row(s, '標籤樣式', seg('segLab', () => S.lab, v => { S.lab = v; }, [['block', '色塊'], ['outline', '外框'], ['plain', '純文字']]));
+  row(s, '文字位置', seg('segTpos', () => S.tpos, v => { S.tpos = v; }, [['center', '中心'], ['top', '頂部'], ['bottom', '底部']]));
+  row(s, '文字內容', seg('segTmode', () => S.tmode, v => { S.tmode = v; }, [['random', '隨機'], ['pos', '位置'], ['count', '數量']]));
+  row(s, '字體大小', seg('segFs', () => S.fsize, v => { S.fsize = parseInt(v, 10); }, [['10', '10'], ['12', '12'], ['16', '16'], ['18', '18'], ['20', '20']]));
+  const sw = el('div', 'swatches'); sw.id = 'swatches';
+  PALETTE.forEach((hx, i) => { const b = el('button', 'sw'); b.type = 'button'; b.style.background = hx; b.title = hx; b.setAttribute('aria-label', `顏色 ${hx}`); b.addEventListener('click', () => { S.color = i; syncAll(); }); sw.append(b); });
+  const rb = el('button', 'sw rainbow'); rb.type = 'button'; rb.title = '彩虹循環'; rb.setAttribute('aria-label', '彩虹循環'); rb.addEventListener('click', () => { S.color = RAINBOW; syncAll(); }); sw.append(rb);
+  binds.push(() => { [...sw.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i === S.color))); });
+  row(s, '調色盤', sw);
+  const c4 = el('div', 'checks');
+  c4.append(check('cText', '文字', () => S.text, v => { S.text = v; }), check('cSep', '分離顏色', () => S.separate, v => { S.separate = v; }), check('cCrazy', '瘋狂', () => S.crazy, v => { S.crazy = v; }));
+  s.append(c4);
+
+  // 全畫面效果
+  s = section('全畫面效果', 'SCREEN');
+  row(s, '色調', seg('segTone', () => S.tone, v => { S.tone = v; }, [['orig', '原色'], ['bw', '黑白'], ['hc', '高對比'], ['1bit', '1-bit']]));
+  row(s, '對比', range('rCon', 'contrast', 0.5, 4, 0.1, v => v.toFixed(1)), 'rCon');
+  row(s, '點陣', seg('segDots', () => S.dots, v => { S.dots = v; }, [['none', '無'], ['halftone', '網點'], ['led', 'LED'], ['lines', '線條']]));
+  row(s, '點陣大小', range('rDs', 'dsize', 3, 24, 1, v => v + 'px'), 'rDs');
+  row(s, '畫面撕裂', range('rTear', 'tear', 0, 1, 0.05, v => v.toFixed(2)), 'rTear');
+  row(s, '色偏', range('rShift', 'shift', 0, 20, 1, v => v + 'px'), 'rShift');
+  row(s, '掃描線', range('rScan', 'scan', 0, 0.8, 0.05, v => v.toFixed(2)), 'rScan');
+
+  // 音訊
+  s = section('音訊', 'AUDIO');
+  const c5 = el('div', 'checks');
+  c5.append(check('cSound', '聲音（新斑點出現時響一聲）', () => S.sound, v => { S.sound = v && ensureAudio(); }));
+  s.append(c5);
+  row(s, '音色', seg('segVoice', () => S.voice, v => { if (v === 'custom' && !customBuf) { toast('請先上傳音效檔'); return; } S.voice = v; }, [['computer', 'Computer'], ['beep', 'Beep'], ['bird', 'Bird'], ['custom', '自訂']]));
+  const sb = el('label', 'btn small filebtn', '上傳音效'); const si = el('input'); si.type = 'file'; si.id = 'sndIn'; si.accept = 'audio/*';
+  si.addEventListener('change', () => { loadSound(si.files[0]); si.value = ''; }); sb.append(si);
+  const sn = el('span', 'hint'); binds.push(() => { sn.textContent = customBuf ? customName : '每次播放開頭最多 1.2 秒'; });
+  const sw2 = el('div', 'btnrow'); sw2.style.alignItems = 'center'; sw2.append(sb, sn);
+  row(s, '自訂音效', sw2);
+  const vr = range('rVol', 'vol', 0, 1, 0.05, v => Math.round(v * 100) + '%');
+  vr.querySelector('input').addEventListener('input', () => { if (master) master.gain.value = S.vol; });
+  row(s, '音量', vr, 'rVol');
+}
+
+function allIn() {
+  for (const [k] of BASIC) S.basic[k] = true;
+  for (const [k] of FILTERS) S.filters[k] = true;
+  Object.assign(S, { tone: 'hc', dots: 'halftone', lstyle: 'lightning', rate: 1, font: 'pixel', crazy: true, blend: true, flicker: true, tear: 0.45 });
+  syncAll(); toast('已開啟全部效果');
+}
+function resetAll() {
+  const keepSound = false; S = fresh(); S.sound = keepSound;
+  if (master) master.gain.value = S.vol;
+  syncAll(); toast('已回到預設值');
+}
+
+// ───────────────────────── 事件 ─────────────────────────
+$('#btnAll').addEventListener('click', allIn);
+$('#btnReset').addEventListener('click', resetAll);
+$('#btnRec').addEventListener('click', () => { if (rec) stopRec(); else startRec(); });
+binds.push(() => { const b = $('#btnRec'); b.setAttribute('aria-pressed', String(!!rec)); b.textContent = rec ? '■ 停止錄製' : '● 錄製'; });
+
+const stage = $('#stage'), drop = $('#drop');
+let dragN = 0;
+stage.addEventListener('dragenter', e => { e.preventDefault(); dragN++; drop.hidden = false; });
+stage.addEventListener('dragover', e => { e.preventDefault(); });
+stage.addEventListener('dragleave', () => { dragN = Math.max(0, dragN - 1); if (!dragN) drop.hidden = true; });
+stage.addEventListener('drop', e => { e.preventDefault(); dragN = 0; drop.hidden = true; const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) loadFile(f); });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+buildPanel();
+setSize(1280, 720);
+syncAll();
+requestAnimationFrame(frame);
+window.__blobtrace = { get S() { return S; }, allIn, resetAll, startRec, stopRec, get boxes() { return lastBoxes; } };
+})();
+</script>
+
+</body>
+</html>

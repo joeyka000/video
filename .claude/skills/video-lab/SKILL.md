@@ -57,6 +57,11 @@ description: 日常剪片與程式動畫工作台。剪片（剪段、去停頓�
 - 實拍轉動漫感的 ffmpeg 做法也在 `references/anime.md`
 - 參考庫：`~/video-lab/refs/anime-op`（動畫 OP 範例，程式碼 ISC；歌曲與影像素材不可用）
 
+## F. Blob tracking 疊加特效（Blobtrace）
+- 工具：`assets/blobtrace.html`，單一 HTML 檔，直接用瀏覽器開；全部在本機運算，不上傳檔案
+- 用途：對影片做斑點追蹤（亮部／暗部／動態），疊上追蹤框、連線、標籤、框內濾鏡、全畫面故障效果，即時預覽並錄成 WebM（不支援時 MP4）
+- 做 TouchDesigner 風格的 blob tracking 段落時先用它試效果；要逐格精準輸出時，照 D 段的做法改寫成 `render(t)` 純函數再用 `scripts/render.py` 輸出
+
 ## 授權
 - pdoom-video 程式碼 MIT 可商用；`audio/`、`lyrics/`、`data/lyrics.json` 屬原作者，不可使用
 - awesome 庫每支 prompt 與影片屬原作者，客戶案一律改寫
