@@ -10,6 +10,7 @@
   python render.py page.html -o out/mv.mp4 --dur 10 --samples 6 --shutter 0.5     # 子格平均動態模糊（Canvas 2D）
   python render.py page.html -o out/mv4k.mp4 --dur 10 --scale 2                   # 3840×2160（deviceScaleFactor 2）
   python render.py page.html -o out/cuts.png --cuts                                # 讀 window.CUTS 出剪點拼圖
+  python render.py page.html -o out/mv.mp4 --dur 10 --profile                      # 印每格 render／截圖毫秒數
 
 頁面約定：
   - window.render(t) 把第 t 秒的畫面畫出來（可以是 async）。畫面必須是 t 的純函式：同一個 t 永遠畫出同一張圖。
@@ -20,9 +21,16 @@
     （window.CANVAS 或 document.querySelector('canvas')）的畫素平均再截圖；只支援 Canvas 2D。N=1 走原路徑。
   - --scale 2：deviceScaleFactor=2，頁面仍以 --w×--h 的 CSS 版面排版，截圖與影片為實體尺寸（1920×1080 → 3840×2160）。
     頁面 canvas 若仍是 1920×1080 畫素，輸出只是放大；要真 4K 請頁面依 window.RENDER_SCALE 放大 canvas.width/height。
+  - 截圖走 CDP（Chrome DevTools Protocol）Page.captureScreenshot 的 optimizeForSpeed（PNG 不壓縮），畫素與 page.screenshot
+    完全相同、--alpha 與 --scale 也相同；1080p 每格截圖約 60–180 ms（內容越雜越慢），page.screenshot 要 100–490 ms。
+  - --cuts：每個剪點出前 2 格、該格、後 2 格（一列 5 格，該格標籤加 <），看剪點有沒有差一格。
   - 頁面的 console.error 與未捕捉的例外（pageerror）會印到 stderr；有 pageerror 或 render(t) 丟例外時以非 0 結束。
+  - --audio：先用 ffprobe 查音訊長度；--from 之後剩下的音訊比影片短時印警告，並用 apad 補靜音到影片長度（不截短影片）。
+  - --profile：每格印 render(t) 與截圖各花幾毫秒到 stderr，最後印平均與最大值；用來找頁面的效能瓶頸。
+  - 拼圖（--sheet／--cuts）每格下方加 28 px 黑條放標籤，不壓到畫面。
 """
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -63,9 +71,19 @@ def encoder_args(out, alpha):
     return ["-c:v", "libx264", "-crf", "16", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
 
 
+def probe_duration(path):
+    """用 ffprobe 取音訊檔長度（秒）；取不到回傳 None。"""
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                       capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return None
+
+
 def safe_label(s):
-    """sendcmd／drawtext 的文字：去掉會被當成語法的字元。"""
-    return "".join(ch if ch not in "'\";:,\\[]" else " " for ch in s)
+    """sendcmd／drawtext 的文字：會被當成語法的字元換成空白（% 是 drawtext 的展開起始符，含 % 整行標籤不畫）。"""
+    return "".join(ch if ch not in "'\";:,\\[]%" else " " for ch in s)
 
 
 def sheet_filter(labels, cols, cmd_path):
@@ -74,8 +92,9 @@ def sheet_filter(labels, cols, cmd_path):
         for i, lab in enumerate(labels):
             f.write(f"{i}.0 drawtext reinit 'text={safe_label(lab)}';\n")
     rows = (len(labels) + cols - 1) // cols
-    return (f"sendcmd=f={cmd_path},scale=480:-2,"
-            f"drawtext=text='':x=8:y=8:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.5,"
+    # 先縮到 480 寬、下方補 28 px 黑條，標籤畫在黑條上（不壓到畫面）
+    return (f"sendcmd=f={cmd_path},scale=480:-2,pad=iw:ih+28:0:0:black,"
+            f"drawtext=text='':x=8:y=h-24:fontsize=20:fontcolor=white,"
             f"tile={cols}x{rows}")
 
 
@@ -95,7 +114,8 @@ def main():
     ap.add_argument("--samples", type=int, default=1, help="每格的子格數（動態模糊），1 = 不做")
     ap.add_argument("--shutter", type=float, default=0.5, help="快門開角：子格分佈在 shutter×(1/fps) 內")
     ap.add_argument("--data", action="append", default=[], metavar="KEY=PATH", help="注入 window.DATA[KEY] = JSON")
-    ap.add_argument("--cuts", action="store_true", help="讀頁面 window.CUTS 輸出剪點拼圖（每個剪點前後各 2 格）")
+    ap.add_argument("--cuts", action="store_true", help="讀頁面 window.CUTS 輸出剪點拼圖（每個剪點前後各 2 格，一列 5 格）")
+    ap.add_argument("--profile", action="store_true", help="每格印 render／截圖毫秒數到 stderr")
     a = ap.parse_args()
     if a.scale < 1 or a.samples < 1 or a.fps < 1:
         ap.error("--scale、--samples、--fps 都要 ≥ 1")
@@ -112,13 +132,29 @@ def main():
         with open(path, encoding="utf-8") as f:
             data[k] = json.load(f)
 
+    audio_dur = None
+    if a.audio:
+        if not os.path.exists(a.audio):
+            sys.exit(f"--audio：找不到 {a.audio}")
+        audio_dur = probe_duration(a.audio)
+
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     page_errors = []
     pr = None
+    prof = []   # (render 毫秒, 截圖毫秒)
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
         context = browser.new_context(viewport={"width": a.w, "height": a.h}, device_scale_factor=a.scale)
         page = context.new_page()
+        # 截圖走 CDP Page.captureScreenshot（optimizeForSpeed）：畫素與 page.screenshot 相同，1080p 快 2–3 倍
+        cdp = context.new_cdp_session(page)
+        if a.alpha:
+            # 等同 page.screenshot(omit_background=True)：預設背景改成全透明（CDP 的 emulation 狀態是每個 session 各自的）
+            cdp.send("Emulation.setDefaultBackgroundColorOverride", {"color": {"r": 0, "g": 0, "b": 0, "a": 0}})
+        # clip.scale 用 deviceScaleFactor：這個 session 沒有 Playwright 的 device metrics override，
+        # 不帶 clip 或 scale=1 只會拿到 CSS 畫素尺寸（--scale 2 時少掉 4K）
+        shot_args = {"format": "png", "optimizeForSpeed": True, "captureBeyondViewport": False,
+                     "clip": {"x": 0, "y": 0, "width": a.w, "height": a.h, "scale": a.scale}}
         page.on("console", lambda m: m.type == "error" and print(f"[console.error] {m.text}", file=sys.stderr))
         page.on("pageerror", lambda e: (page_errors.append(str(e)), print(f"[pageerror] {e}", file=sys.stderr)))
         init = f"window.RENDER_SCALE = {a.scale}; window.RENDER_FPS = {a.fps};"
@@ -136,13 +172,16 @@ def main():
                 sys.exit("頁面 30 秒內沒有定義 window.render(t)")
             page.wait_for_timeout(100)
         page.evaluate("document.fonts.ready")
-        page.evaluate(SAMPLE_JS)
+        if a.samples > 1:
+            # 包成箭頭函式：evaluate 收到「回傳函式的運算式」會立刻呼叫它，這裡只要定義 window.__mvSample
+            page.evaluate("() => {" + SAMPLE_JS + "}")
         dur = a.dur or page.evaluate("window.DURATION || 0")
         if not a.sheet and not a.cuts and not dur:
             browser.close()
             sys.exit("需要 --dur 或頁面上的 window.DURATION")
 
         def shot(t):
+            t_a = time.perf_counter()
             try:
                 if a.samples > 1:
                     page.evaluate("([t, n, s, fps]) => window.__mvSample(t, n, s, fps)", [t, a.samples, a.shutter, a.fps])
@@ -153,7 +192,13 @@ def main():
                 page_errors.append(msg)
                 print(f"\n[render error] t={t:.3f}: {msg}", file=sys.stderr)
                 raise
-            return page.screenshot(omit_background=a.alpha)
+            t_b = time.perf_counter()
+            png = base64.b64decode(cdp.send("Page.captureScreenshot", shot_args)["data"])
+            t_c = time.perf_counter()
+            prof.append(((t_b - t_a) * 1000, (t_c - t_b) * 1000))
+            if a.profile:
+                print(f"[profile] t={t:.3f} render {prof[-1][0]:.0f} ms  截圖 {prof[-1][1]:.0f} ms", file=sys.stderr)
+            return png
 
         try:
             if a.sheet or a.cuts:
@@ -161,9 +206,9 @@ def main():
                     cuts = page.evaluate("Array.isArray(window.CUTS) ? window.CUTS : null")
                     if not cuts:
                         sys.exit("--cuts 需要頁面定義 window.CUTS = [秒, ...]")
-                    times, labels, cols = [], [], 4
+                    times, labels, cols = [], [], 5
                     for i, c in enumerate(cuts):
-                        for k in (-2, -1, 0, 1):
+                        for k in (-2, -1, 0, 1, 2):
                             t = max(0.0, c + k / a.fps)
                             times.append(t)
                             labels.append(f"cut{i + 1} {k:+d}f {t:.3f}s" + (" <" if k == 0 else ""))
@@ -185,7 +230,13 @@ def main():
                 n = round(dur * a.fps)
                 ff = ["ffmpeg", "-v", "error", "-y", "-f", "image2pipe", "-framerate", str(a.fps), "-i", "-"]
                 if a.audio:
-                    ff += ["-ss", str(a.t0), "-i", a.audio, "-c:a", "aac", "-b:a", "192k", "-shortest"]
+                    total = n / a.fps
+                    if audio_dur is not None and audio_dur - a.t0 < total - 0.5 / a.fps:
+                        print(f"警告：{a.audio} 從 {a.t0:g} 秒起只剩 {max(0.0, audio_dur - a.t0):.3f} 秒，影片 {total:.3f} 秒，"
+                              f"不足的補靜音", file=sys.stderr)
+                    # apad 補靜音、-t 切齊影片長度（不用 -shortest：音訊短時它會把影片截短）
+                    ff += ["-ss", str(a.t0), "-i", a.audio, "-af", "apad", "-t", f"{total:.6f}",
+                           "-c:a", "aac", "-b:a", "192k"]
                 ff += encoder_args(a.out, a.alpha) + [a.out]
                 pr = subprocess.Popen(ff, stdin=subprocess.PIPE)
                 for i in range(n):
@@ -204,6 +255,11 @@ def main():
                 pr.stdin.close()
                 pr.wait()
             browser.close()
+    if prof and (a.profile or len(prof) >= 10):
+        r = [x[0] for x in prof]
+        q = [x[1] for x in prof]
+        print(f"每格 render 平均 {sum(r) / len(r):.0f} ms（最大 {max(r):.0f}）  截圖平均 {sum(q) / len(q):.0f} ms"
+              f"（最大 {max(q):.0f}）  共 {len(prof)} 格", file=sys.stderr)
     if page_errors:
         sys.exit(f"頁面有 {len(page_errors)} 個錯誤（見 stderr），輸出不可信")
     if pr is None or pr.returncode:

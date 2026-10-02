@@ -3,6 +3,7 @@
 
   python qa.py out/montage.mp4 --audio-json data/audio.json
   python qa.py out/montage.mp4 --audio-json data/audio.json -o out/qa --cuts out/montage.cuts.json
+  python qa.py out/montage.mp4 --audio-json data/audio.json --threshold 0.2    # 場景分數門檻（預設 0.3）
 
 產出（-o 預設 out/qa）：
   sheet_<段落>.png   每個段落在其 downbeats 抽格的拼圖（每格標歌曲秒數；超過 32 格時均勻取樣）
@@ -10,7 +11,10 @@
                      給 --cuts 時另列預期剪點 vs 偵測到的剪點
 
 做法：
-  - 剪點：ffmpeg select='gt(scene,0.3)' + metadata=print（印出用的方法）；fps 用 ffprobe 取
+  - 剪點：ffmpeg select='gt(scene,門檻)' + metadata=print（印出用的方法）；fps 用 ffprobe 取。
+    偵測限制：同一鏡頭的子剪（punch-in）、兩個相似畫面之間的剪點，場景分數常低於門檻而偵測不到；
+    報告把它們標成「未偵測到（門檻 X）」，不代表成片有問題。畫面變化大的鏡頭內動作也可能被當成剪點。
+    門檻用 --threshold 調（越低越敏感）
   - 亮度：signalstats 的 YAVG（0–255，限制範圍黑位 16、白位 235）
       黑場 = YAVG ≤ 16 連續 ≥ 0.5 秒；閃白 = YAVG ≥ 235 的格（連續的算一次）
   - --cuts 接受兩種格式：[秒, ...]（歌曲絕對秒）或 cutlist.py 的 OUT.cuts.json
@@ -64,7 +68,8 @@ def parse_metadata(text, key):
 
 
 def safe_label(s):
-    return "".join(ch if ch not in "'\";:,\\[]" else " " for ch in s)
+    """sendcmd／drawtext 的文字：會被當成語法的字元換成空白（% 是 drawtext 的展開起始符，含 % 整行標籤不畫）。"""
+    return "".join(ch if ch not in "'\";:,\\[]%" else " " for ch in s)
 
 
 def safe_name(s):
@@ -85,7 +90,10 @@ def main():
     ap.add_argument("--audio-json", dest="audio_json", required=True)
     ap.add_argument("-o", "--out", default="out/qa", help="輸出資料夾（預設 out/qa）")
     ap.add_argument("--cuts", help="預期剪點：[秒,...] 或 cutlist.py 的 OUT.cuts.json")
+    ap.add_argument("--threshold", type=float, default=0.3, help="場景分數門檻（預設 0.3；越低越敏感）")
     a = ap.parse_args()
+    if not (0 < a.threshold <= 1):
+        ap.error("--threshold 要在 0 到 1 之間")
     for p in (a.video, a.audio_json) + ((a.cuts,) if a.cuts else ()):
         if not os.path.exists(p):
             sys.exit(f"找不到檔案：{p}")
@@ -111,8 +119,9 @@ def main():
     total_frames = info["nb"] or int(round(dur * fps))
 
     # 1. 剪點偵測
-    method = "select='gt(scene,0.3)'"
-    txt = run(["ffmpeg", "-v", "error", "-i", a.video, "-vf", "select='gt(scene\\,0.3)',metadata=print:file=-",
+    thr = f"{a.threshold:g}"
+    method = f"select='gt(scene,{thr})'"
+    txt = run(["ffmpeg", "-v", "error", "-i", a.video, "-vf", f"select='gt(scene\\,{thr})',metadata=print:file=-",
                "-f", "null", "-"], "剪點偵測")
     detected = parse_metadata(txt, "lavfi.scene_score")   # (影片秒, 分數)
 
@@ -169,7 +178,7 @@ def main():
     branches = []
     cmd_files = []
     for s in sections:
-        dbs = [d for d in downbeats if s["start"] - 1e-6 <= d < s["end"]]
+        dbs = [d for d in downbeats if s["start"] - 1e-3 <= d < s["end"] - 1e-3]
         frames = [(round((d - offset) * fps), d) for d in dbs if 0 <= (d - offset) < dur]
         frames = [(fi, d) for fi, d in frames if fi < total_frames]
         if not frames:
@@ -182,16 +191,18 @@ def main():
         name = safe_name(str(s["name"]))
         path = os.path.join(a.out, f"sheet_{name}.png")
         cmd_path = os.path.join(a.out, f"_cmds_{name}.txt")
+        k = len(branches)
+        # 一張 filter_complex 裡有多個 drawtext：sendcmd 的目標寫 drawtext 會命中圖內每一個 drawtext，
+        # 所以每條分支的 drawtext 取名 drawtext@s{k}，指令檔也只對它下指令
         with open(cmd_path, "w", encoding="utf-8") as f:
             for fi, d in frames:
                 lab = safe_label(f"{s['name']} {d:.3f}s")
-                f.write(f"{max(0.0, (fi - 0.5) / fps):.4f} drawtext reinit 'text={lab}';\n")
+                f.write(f"{max(0.0, (fi - 0.5) / fps):.4f} drawtext@s{k} reinit 'text={lab}';\n")
         cmd_files.append(cmd_path)
         sel = "+".join(f"eq(n\\,{fi})" for fi, _ in frames)
         cols = min(4, len(frames))
-        k = len(branches)
-        branches.append((f"[v{k}]select='{sel}',sendcmd=f={cmd_path},scale=480:-2,"
-                         f"drawtext=text='':x=8:y=8:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.5{font_arg()},"
+        branches.append((f"[v{k}]select='{sel}',sendcmd=f={cmd_path},scale=480:-2,pad=iw:ih+28:0:0:black,"
+                         f"drawtext@s{k}=text='':x=8:y=h-24:fontsize=20:fontcolor=white{font_arg()},"
                          f"tile={cols}x{(len(frames) + cols - 1) // cols}[s{k}]", path))
         sheets.append((s["name"], path, len(frames), note))
     if branches:
@@ -215,10 +226,11 @@ def main():
                 exp_rows.append((te, None, None, "影片開頭（不算剪點）"))
                 continue
             nd, e = nearest(det_ts, te)
+            miss = f"未偵測到（門檻 {thr}）"
             if nd is None:
-                exp_rows.append((te, None, None, "漏偵測"))
+                exp_rows.append((te, None, None, miss))
             else:
-                exp_rows.append((te, nd, e, "命中" if abs(e) <= fr + 1e-6 else "漏偵測"))
+                exp_rows.append((te, nd, e, "命中" if abs(e) <= fr + 1e-6 else miss))
         hit_ts = {r[1] for r in exp_rows if r[3] == "命中"}
         extra = sum(1 for t in det_ts if t not in hit_ts)
 
@@ -228,7 +240,9 @@ def main():
     L.append(f"- 解析度 {info['w']}×{info['h']}，{fps:g} fps，長度 {dur:.3f} 秒，{info['nb'] or len(yavg)} 格")
     L.append(f"- 節拍資料 {os.path.basename(a.audio_json)}：{audio['tempo']} BPM，{len(beats)} 拍，{len(downbeats)} 小節")
     L.append(f"- 影片 0 秒 = 歌曲 {offset:.3f} 秒" + ("（來自 --cuts 的 offset）" if a.cuts else "（未給 --cuts，假設 0）"))
-    L.append(f"- 剪點偵測方法：ffmpeg `{method}`\n")
+    L.append(f"- 剪點偵測方法：ffmpeg `{method}`（--threshold {thr}）")
+    L.append("- 偵測限制：同鏡頭子剪（punch-in）與相似畫面間的剪點場景分數低，常偵測不到；"
+             "「未偵測到」不代表成片有問題，請對照段落拼圖或調低 --threshold 再跑\n")
     L.append("## 剪點與拍點\n")
     L.append(f"- 偵測到 {n_cut} 個剪點；落在最近拍點 ±1 格（±{fr * 1000:.1f} ms）內 {n_on} 個"
              f"（{n_on / n_cut * 100 if n_cut else 0:.0f}%）；落在 downbeat ±1 格內 {n_on_db} 個；平均絕對誤差 {mae:.1f} ms\n")
@@ -241,7 +255,8 @@ def main():
         L.append("\n## 預期剪點 vs 偵測\n")
         n_hit = sum(1 for r in exp_rows if r[3] == "命中")
         n_chk = sum(1 for r in exp_rows if r[3] != "影片開頭（不算剪點）")
-        L.append(f"- 預期 {len(expected)} 個（可檢查 {n_chk} 個），命中 {n_hit} 個，多出的偵測剪點 {extra} 個\n")
+        L.append(f"- 預期 {len(expected)} 個（可檢查 {n_chk} 個），命中 {n_hit} 個，未偵測到 {n_chk - n_hit} 個，"
+                 f"多出的偵測剪點 {extra} 個\n")
         L.append("| 預期（歌曲秒） | 偵測到（歌曲秒） | 誤差 ms | 狀態 |")
         L.append("|--:|--:|--:|:--|")
         for te, nd, e, status in exp_rows:
@@ -266,7 +281,9 @@ def main():
     print(f"剪點偵測：{method}  偵測到 {n_cut} 個，±1 格內 {n_on}（{n_on / n_cut * 100 if n_cut else 0:.0f}%），"
           f"平均絕對誤差 {mae:.1f} ms")
     if expected is not None:
-        print(f"預期剪點 {len(expected)} 個：命中 {sum(1 for r in exp_rows if r[3] == '命中')}，多出 {extra}")
+        n_hit = sum(1 for r in exp_rows if r[3] == "命中")
+        n_chk = sum(1 for r in exp_rows if r[3] != "影片開頭（不算剪點）")
+        print(f"預期剪點 {len(expected)} 個：命中 {n_hit}，未偵測到 {n_chk - n_hit}（門檻 {thr}；同鏡頭子剪可能偵測不到），多出 {extra}")
     print(f"黑場 {len(black_runs)} 段  閃白 {len(flash_runs)} 次  拼圖 {len(sheets)} 張")
     print(report)
 

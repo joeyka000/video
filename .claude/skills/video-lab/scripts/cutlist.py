@@ -10,17 +10,20 @@ cuts.csv 欄位：bar,beat,src,in,speed,label
   src    素材影片路徑（相對路徑先以目前目錄、再以 cuts.csv 所在目錄找）
   in     從素材的第幾秒開始播（預設 0）
   speed  播放速度（預設 1；2 = 兩倍速，0.5 = 慢動作）
-  label  備註（會印在表與拼圖上，可留空）
+  label  備註（會印在表與拼圖上，可留空；拼圖上 % 與 '";:,\[] 會被換成空白，表格照原文印）
 每列從該拍的時間開始播 src 的 in 秒處，播到下一列為止；最後一列播到下一個 downbeat。
 
 做法：
   1. bar/beat → 絕對秒：downbeats[bar] + (beat-1)×拍長；先印剪點表（列、秒、長度、格數、來源、in、速度、標籤）
   2. 輸出 fps／解析度取第一支素材（ffprobe），其他素材縮放加黑邊到同尺寸
   3. 每段 ffmpeg 精準重編碼：-accurate_seek -ss in -i src，setpts=(PTS-STARTPTS)/speed，fps=FPS，
-     素材不夠長時 tpad 停格補足，-frames:v 固定格數；libx264 crf 16
-  4. concat demuxer 串接（-c copy）；有 --music 時從第一列的時間起合音軌（-shortest）
+     素材不夠長時 tpad 停格補足，-frames:v 固定格數；libx264 crf 16。
+     in 超過素材最後一格（in > 長度 − 1/fps）會直接報錯（-ss 會解不出任何格，整段無聲無息消失）；
+     每段轉完用 ffprobe 核對格數，不等於預期就中止並指出第幾列
+  4. concat demuxer 串接（-c copy）；有 --music 時從第一列的時間起合音軌：apad 補靜音、-t 切齊影片長度；
+     音樂比剪點表短時表格上方會印「音樂於 X 秒結束，之後無聲」
   5. 影片的 0 秒 = 第一列的時間；另寫 OUT.cuts.json（offset、fps、各列絕對秒）給 qa.py --cuts 用
-  6. --sheet：另出 OUT.cuts.png，每段第一格的拼圖，每格標秒數與標籤
+  6. --sheet：另出 OUT.cuts.png，每段第一格的拼圖，每格下方黑條標列序、小節／拍、秒數與標籤
 """
 import argparse
 import csv
@@ -41,7 +44,7 @@ def run(cmd, what):
 
 def probe(path):
     out = run(["ffprobe", "-v", "error", "-select_streams", "v:0",
-               "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate:format=duration",
+               "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration:format=duration",
                "-of", "json", path], f"ffprobe {path}")
     d = json.loads(out)
     if not d.get("streams"):
@@ -50,12 +53,39 @@ def probe(path):
     fr = st.get("avg_frame_rate")
     if not fr or fr == "0/0":
         fr = st["r_frame_rate"]
+    # 視訊軌長度優先（容器長度可能被較長的音軌撐大）
+    vdur = float(st.get("duration") or 0) or float(d["format"].get("duration", 0) or 0)
     return {"w": int(st["width"]), "h": int(st["height"]), "fps": float(Fraction(fr)),
-            "dur": float(d["format"].get("duration", 0) or 0)}
+            "dur": vdur, "nb": int(st.get("nb_frames") or 0)}
+
+
+def count_frames(path):
+    """輸出檔的格數：先讀容器的 nb_frames，沒有就逐格解碼數（-count_frames）。"""
+    out = run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+               "-show_entries", "stream=nb_frames", "-of", "csv=p=0", path], f"ffprobe {path}")
+    try:
+        return int(out.strip())
+    except ValueError:
+        pass
+    out = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
+               "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", path], f"ffprobe {path}")
+    try:
+        return int(out.strip())
+    except ValueError:
+        return 0
+
+
+def audio_duration(path):
+    out = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], f"ffprobe {path}")
+    try:
+        return float(out.strip())
+    except ValueError:
+        return 0.0
 
 
 def safe_label(s):
-    return "".join(ch if ch not in "'\";:,\\[]" else " " for ch in s)
+    """sendcmd／drawtext 的文字：會被當成語法的字元換成空白（% 是 drawtext 的展開起始符，含 % 整行標籤不畫）。"""
+    return "".join(ch if ch not in "'\";:,\\[]%" else " " for ch in s)
 
 
 def font_arg():
@@ -159,16 +189,31 @@ def main():
         if r["n"] < 1:
             sys.exit(f"第 {r['line']} 行與下一列之間不到一格（{fps:g} fps），請拉開剪點")
 
+    total = frames[-1]
     print(f"輸出 {W}×{H} {fps:g} fps  tempo {audio['tempo']} BPM  拍長 {P:.4f} 秒  "
-          f"影片 0 秒 = 歌曲 {t0:.3f} 秒  結束於歌曲 {t_end:.3f} 秒  共 {frames[-1]} 格 {frames[-1] / fps:.3f} 秒")
-    print(f"{'列':>3} {'小節.拍':>8} {'歌曲秒':>8} {'影片秒':>8} {'長(秒)':>7} {'格數':>5}  {'來源':<28} {'in':>7} {'速度':>5}  標籤")
+          f"影片 0 秒 = 歌曲 {t0:.3f} 秒  結束於歌曲 {t_end:.3f} 秒  共 {total} 格 {total / fps:.3f} 秒")
+    music_dur = audio_duration(a.music) if a.music else None
+    if music_dur is not None and music_dur < t_end - 0.5 / fps:
+        print(f"音樂 {os.path.basename(a.music)} 只有 {music_dur:.3f} 秒：音樂於歌曲 {music_dur:.3f} 秒"
+              f"（影片 {max(0.0, music_dur - t0):.3f} 秒）結束，之後無聲")
+    print(f"{'列':>3} {'小節:拍':>8} {'歌曲秒':>8} {'影片秒':>8} {'長(秒)':>7} {'格數':>5}  {'來源':<28} {'in':>7} {'速度':>5}  標籤")
+    bad = []
     for i, r in enumerate(rows, 1):
-        print(f"{i:>3} {r['bar']:>5}.{r['beat']:<2g} {r['t']:>8.3f} {r['f'] / fps:>8.3f} {r['dur']:>7.3f} {r['n']:>5}  "
+        print(f"{i:>3} {r['bar']:>4}:{r['beat']:<3g} {r['t']:>8.3f} {r['f'] / fps:>8.3f} {r['dur']:>7.3f} {r['n']:>5}  "
               f"{os.path.basename(r['src'])[:28]:<28} {r['in']:>7.2f} {r['speed']:>5g}  {r['label']}")
-        need = r["in"] + r["dur"] * r["speed"]
-        if info[r["src"]]["dur"] and need > info[r["src"]]["dur"] + 0.01:
-            print(f"    警告：{os.path.basename(r['src'])} 只有 {info[r['src']]['dur']:.2f} 秒，需要到 {need:.2f} 秒，"
-                  f"不足的用最後一格停格補足", file=sys.stderr)
+        src = info[r["src"]]
+        if src["dur"]:
+            last = src["dur"] - 1.0 / (src["fps"] or fps)   # 素材最後一格的時間
+            if r["in"] > last + 1e-6:
+                bad.append(f"第 {r['line']} 行（列 {i}）：in {r['in']:.3f} 超過 {os.path.basename(r['src'])} 的最後一格 "
+                           f"{last:.3f} 秒（素材長 {src['dur']:.3f} 秒），-ss 會解不出任何格")
+                continue
+            need = r["in"] + r["dur"] * r["speed"]
+            if need > src["dur"] + 0.01:
+                print(f"    警告：{os.path.basename(r['src'])} 只有 {src['dur']:.2f} 秒，需要到 {need:.2f} 秒，"
+                      f"不足的 {(need - src['dur']) / r['speed'] * fps:.0f} 格用最後一格停格補足", file=sys.stderr)
+    if bad:
+        sys.exit("剪點表有錯，未轉檔：\n" + "\n".join(bad))
 
     out_abs = os.path.abspath(a.out)
     os.makedirs(os.path.dirname(out_abs), exist_ok=True)
@@ -183,6 +228,10 @@ def main():
         run(["ffmpeg", "-v", "error", "-y", "-accurate_seek", "-ss", f"{r['in']:.4f}", "-i", r["src"], "-an",
              "-vf", vf, "-frames:v", str(r["n"]), "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
              "-pix_fmt", "yuv420p", seg], f"第 {i + 1} 段轉檔")
+        got = count_frames(seg)
+        if got != r["n"]:
+            sys.exit(f"\n第 {r['line']} 行（列 {i + 1}，{os.path.basename(r['src'])} in {r['in']:.3f}）轉出 {got} 格，"
+                     f"預期 {r['n']} 格；中止（請檢查 in 是否超過素材長度、素材是否可解碼）")
         seg_files.append(seg)
         print(f"\r轉檔 {i + 1}/{len(rows)}", end="", file=sys.stderr, flush=True)
     print(file=sys.stderr)
@@ -192,9 +241,14 @@ def main():
             f.write(f"file '{s}'\n")
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list_path]
     if a.music:
-        cmd += ["-ss", f"{t0:.4f}", "-i", a.music, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "192k", "-shortest"]
+        # apad 補靜音、-t 切齊影片長度；不用 -shortest（音樂短時它會把影片截掉、而且切點不準）
+        cmd += ["-ss", f"{t0:.4f}", "-i", a.music, "-map", "0:v", "-map", "1:a", "-af", "apad",
+                "-t", f"{total / fps:.6f}", "-c:a", "aac", "-b:a", "192k"]
     cmd += ["-c:v", "copy", "-movflags", "+faststart", out_abs]
     run(cmd, "串接")
+    got = count_frames(out_abs)
+    if got != total:
+        sys.exit(f"串接後 {got} 格，預期 {total} 格；輸出不可信")
     shutil.rmtree(seg_dir, ignore_errors=True)
 
     meta = {"offset": round(t0, 4), "fps": fps, "end": round(t_end, 4),
@@ -210,12 +264,12 @@ def main():
         cmd_path = sheet + ".cmds.txt"
         with open(cmd_path, "w", encoding="utf-8") as f:
             for i, r in enumerate(rows, 1):
-                lab = safe_label(f"{i} bar{r['bar']}.{r['beat']:g} {r['t']:.3f}s {r['label']}")
+                lab = safe_label(f"{i} bar{r['bar']} beat{r['beat']:g} {r['t']:.3f}s {r['label']}")
                 f.write(f"{max(0.0, (r['f'] - 0.5) / fps):.4f} drawtext reinit 'text={lab}';\n")
         sel = "+".join(f"eq(n\\,{r['f']})" for r in rows)
         cols = min(4, len(rows))
-        vf = (f"select='{sel}',sendcmd=f={cmd_path},scale=480:-2,"
-              f"drawtext=text='':x=8:y=8:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.5{font_arg()},"
+        vf = (f"select='{sel}',sendcmd=f={cmd_path},scale=480:-2,pad=iw:ih+28:0:0:black,"
+              f"drawtext=text='':x=8:y=h-24:fontsize=20:fontcolor=white{font_arg()},"
               f"tile={cols}x{(len(rows) + cols - 1) // cols}")
         run(["ffmpeg", "-v", "error", "-y", "-i", out_abs, "-vf", vf, "-frames:v", "1", sheet], "剪點拼圖")
         os.remove(cmd_path)

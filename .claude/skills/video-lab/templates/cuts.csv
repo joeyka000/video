@@ -1,9 +1,13 @@
 bar,beat,src,in,speed,label
 0,1,media/a.mp4,0.0,1,intro 街口空景 建立鏡頭
-2,1,media/b.mp4,3.0,1,intro 窗內人影 慢推到位
-4,1,media/a.mp4,8.0,1,verse1 中景 走向鏡頭
-5,3,media/a.mp4,9.5,1,verse1 子剪 同鏡頭 punch-in
-6,1,media/c.mp4,2.0,1,verse1 反應鏡頭 視線向右
-8,1,media/b.mp4,0.5,1,chorus1 特寫 第一個 downbeat 配白閃
-8,3,media/c.mp4,4.0,1,chorus1 全景 動作接動作
-9,1,media/a.mp4,12.0,0.5,chorus1 招牌動作 刻意慢動作
+2,1,media/b.mp4,1.0,1,intro 窗內人影 慢推到位
+4,1,media/a.mp4,1.5,1,verse1 中景 走向鏡頭
+5,3,media/a.mp4,4.5,1,verse1 子剪 同鏡頭接續 punch-in 配方10b後製
+6,1,media/c.mp4,0.5,1,verse1 反應鏡頭 視線向右
+8,1,media/b.mp4,1.5,1,verse1 中景 回到主體
+9,1,media/b.mp4,3.5,1,verse1 子剪 同鏡頭接續 reframing 配方10e後製
+10,1,media/a.mp4,0.0,1,verse1 側拍 動作中途進
+11,1,media/a.mp4,2.0,1,verse1 子剪 同鏡頭接續 punch-in 配方10b後製
+12,1,media/b.mp4,0.5,1,chorus1 特寫 第一個 downbeat 白閃用配方13後製
+12,3,media/c.mp4,2.0,1,chorus1 全景 動作接動作
+13,1,media/a.mp4,1.0,0.5,chorus1 招牌動作 刻意慢動作

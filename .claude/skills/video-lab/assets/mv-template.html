@@ -6,37 +6,72 @@
 <!--
 mv-template.html — 一支 MV 的骨架與示範（Canvas 2D，1920×1080，畫面是 t 的純函式）
 
+目錄約定（下面所有指令都在「專案目錄」執行）
+   專案目錄 = 放 mv-template.html（可改名）、mv-kit.js、data/ 的那個目錄。<script src="mv-kit.js"> 是相對路徑：
+   把模板複製到自己的專案時 mv-kit.js 要一起複製（或把 src 改成技能目錄的絕對路徑）
+   SKILL = 技能根目錄（本 repo 是 .claude/skills/video-lab），先設好環境變數再貼指令：
+     示範（專案目錄就是 SKILL/assets）：cd .claude/skills/video-lab/assets && SKILL=..
+     自己的專案：cd ~/proj/mysong && SKILL=/home/user/video/.claude/skills/video-lab（依實際路徑改）
+
 怎麼換成自己的歌
-1. 把 analyze.py 產的 data/audio.json、align.py 產的 data/lyrics.json、歌曲 data/song.mp3 放在本檔旁的 data/ 目錄
+1. 複製 mv-template.html 與 mv-kit.js 到專案目錄；把 analyze.py 產的 data/audio.json、align.py 產的 data/lyrics.json、
+   歌曲 data/song.mp3 放在專案目錄的 data/
    資料載入順序：window.DATA（render.py --data 注入）→ fetch ./data/audio.json 與 ./data/lyrics.json（用 http 伺服器開才抓得到）
    → 都沒有就用檔尾 demoData() 的內建示範（120 BPM 等拍格、32 小節、4 行示範歌詞），直接雙擊開檔或用舊版 render.py 也能跑
 2. 改檔頭的色票 C、曲名 SONG；段落邊界 BAR 用小節序（看 analyze.py 印的段落表），不寫死秒數
    歌詞行用內容找（lineOr → MV.line('內容')），不寫死時間；verse 依時間自動輪流各行，chorus 的查詢字串換成新歌的字即可
+3. 換歌後先出一次 --sheet 看 stderr：render.py 只轉印 console.error 與 pageerror（console.warn 看不到）。本頁與 mv-kit.js 的
+   「副歌查詢字串找不到、改用第 N 行」「緩動名稱不認得」都用 console.error 印一次；audio.json／lyrics.json 形狀不對
+   （陣列、沒有 beats／tempo、沒有 lines）MV.setData 直接丟錯，render.py 以非 0 結束——不會靜默退回 120 BPM 等拍格做出一支拍點全錯的片
 
 怎麼預覽（瀏覽器）
-   在本目錄：python3 -m http.server 8000 → 開 http://localhost:8000/mv-template.html
-   space 播放／暫停、←／→ ±1 秒、shift+←／→ ±5 秒、, 與 . 逐格、[ 與 ] 上一個／下一個剪點、h 隱藏 HUD
+   在專案目錄：python3 -m http.server 8000 → 開 http://localhost:8000/mv-template.html
+   space 播放／暫停、←／→ ±1 秒、shift+←／→ ±5 秒、, 與 . 逐格（1/MV.fps 秒）、[ 與 ] 上一個／下一個剪點、h 隱藏 HUD
    有 ./data/song.mp3 時用 <audio> 當時鐘（有聲音），否則用 performance.now 當時鐘；時鐘只決定 t，畫面全由 render(t) 決定
    render.py（headless）模式下不會出現 HUD 與鍵盤控制
 
-怎麼輸出（選項以 scripts/render.py 為準）
-   預覽拼圖：python scripts/render.py mv-template.html -o out/sheet.png --sheet 1,2.3,6.5,12.4
-   正式輸出：python scripts/render.py mv-template.html -o out/mv.mp4 --fps 30 \
+怎麼輸出（選項以 $SKILL/scripts/render.py 為準；順序照這個走，先便宜的；在專案目錄執行、SKILL 先設好）
+   1. 預覽拼圖（幾秒）：python $SKILL/scripts/render.py mv-template.html -o out/sheet.png --sheet 1,2.3,6.5,12.4 \
+                        --data audio=data/audio.json --data lyrics=data/lyrics.json
+   2. 剪點拼圖：同上改 -o out/cuts.png --cuts（讀 window.CUTS = 新畫面落定的拍點，每個剪點前後各 2 格）
+      whip／crossfade 這類在 start 前 overlap 秒就開始變的轉場，−2f／−1f 已是轉場中段、不是舊場景；要看舊場景另用 --sheet 剪點−0.4
+      用 ffmpeg 偵測剪點（qa.py）時會比 CUTS 早最多 overlap 秒：比對請用 window.TRANSITIONS 的 from～to 區間（見 mv-kit.js timeline）
+   3. 試渲 10 秒（約 3 分鐘）：同上改 -o out/test.mp4 --dur 10 --from 24 --audio data/song.mp3
+   4. 全片（放到背景跑，run_in_background）：python $SKILL/scripts/render.py mv-template.html -o out/mv.mp4 --fps 30 \
              --data audio=data/audio.json --data lyrics=data/lyrics.json --audio data/song.mp3
-   4K：加 --scale 2（頁面仍以 1920×1080 版面）；動態模糊：加 --samples 8 --shutter 0.5；剪點拼圖：--cuts（讀 window.CUTS）
-   本頁定義 window.render(t)（同步完成）、window.DURATION（秒）、window.CUTS（剪點秒數陣列）
+   4K：加 --scale 2（頁面仍以 1920×1080 版面）；動態模糊：加 --samples 8 --shutter 0.5
+   本頁定義 window.render(t)（同步完成）、window.DURATION（秒）、window.CUTS（剪點秒數陣列）、window.TRANSITIONS（轉場區間）
+   render.py 注入的 window.RENDER_FPS 由 MV.fps 接手：時碼、REC 閃爍、打字、抖動方向、顆粒換圖、逐格快捷鍵都依它，--fps 60 也每格換一次
+
+尺寸：本模板版面固定 1920×1080（plate 的座標寫死：左緣 160、右緣 W−100、字幕帶 H−130、標題 fitSize 1360 寬…）
+   render.py --w 1080 --h 1920 只會把 16:9 的畫布放在正中、上下補黑邊，不是直式版面。要出 9:16／1:1：改檔頭常數 W／H（畫布的 CSS 尺寸由 build() 依 W／H 算，
+   不必動 <style>），每個 plate 的版面另外排（fitSize 的 maxW、字幕帶、VU、角落標註都要重算），render.py 用 --w --h 給同樣的尺寸
+   render.py 目前不注入畫面尺寸，W／H 以本檔常數為準
+字級：1080p 最小字級 18 px（等寬標註也不例外，13–16 px 在手機與縮圖上只剩灰點）；標註是裝飾層，主要資訊走大字
+
+成本（4 核心、swiftshader、1920×1080、30 fps，render.py 實測；其他代理同時在跑，數字有三成上下的浮動）
+   啟動（--sheet 1）1.8 秒。--dur 10（300 格）195 秒 → 0.65 秒/格 → 64 秒全片（1920 格）約 21 分鐘
+   （舊版頁面同一段 352 秒 → 1.17 秒/格：顆粒用 overlay 貼全幅圖、GPU 畫布，截圖平均 1113 ms）
+   每格的大頭不是頁面：render.py 印的分解是「render 平均 77 ms、截圖平均 552 ms」——有顆粒的畫面 PNG 壓不下去，截圖變慢
+   頁面 grain 設 0（build() 的 post）：--dur 10 128 秒 → 0.43 秒/格（render 26 ms、截圖 388 ms）→ 全片約 14 分鐘；
+   顆粒再用 ffmpeg 加回去（10 秒片 39 秒，機器同時跑別的工作時 87 秒）：
+   ffmpeg -i out/mv.mp4 -vf "noise=alls=12:allf=t+u" -c:v libx264 -crf 16 -pix_fmt yuv420p -c:a copy out/mv_grain.mp4
+   --samples 8：30 格 53 秒 → 1.77 秒/格（約 2.7 倍）→ 全片約 57 分鐘；--scale 2：9 格 19 秒 → 約 1.9 秒/格（約 3 倍）→ 全片約 61 分鐘
+   halation 每格約 +16 ms，全片後製不開，只在 plateChorus 版面 A 回傳覆寫
 
 段落（示範，全部原創內容）
    title  開場字卡：大字 kerning 排版在 downbeat 砸入，副標與等寬標註逐拍出現
    verse  歌詞騎在 env 驅動的曲線上逐字亮字（沒有 env 資料時用拍相位當能量）
-   chorus 每個 kick 一個全幅單字 slam＋shake＋flash，每個 snare 換版面；進場用 whip 轉場
+   chorus 每個 kick 一個全幅單字 slam＋shake＋zoom punch，每個 snare 換版面；閃白是標點符號，只在每 2 小節的樂句頭亮一次
+          （8 小節副歌 4 次，半衰期 0.05 秒）；進場用 whip 轉場
    paper  反轉版面（紙底墨線）的表單段：等寬標註、逐拍畫線、蓋章；進場用 invert 轉場
-   outro  母題收束（雨線→一條橫線）、顆粒淡出、淡黑
+   outro  母題收束：雨線減速 → 每條線縮成點、落到同一條水平線上（寬度始終 1.5 px）→ 一條橫線從中心長出 → 收成一點；顆粒淡出、淡黑
 -->
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
-  canvas { display: block; width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.7778vh; }
+  /* 畫布的 CSS 尺寸（寬滿版、依 W/H 定高、不超過視窗高）由 build() 依檔頭 W／H 設定，這裡只管顯示方式 */
+  canvas { display: block; }
   #hud { position: fixed; left: 16px; bottom: 14px; font: 500 14px/1.6 "Noto Sans Mono CJK TC", "Liberation Mono", monospace;
          color: #eee; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 4px; white-space: pre; pointer-events: none; }
   #hud.hidden { display: none; }
@@ -64,11 +99,20 @@ const BAR = { title: 0, verse: 4, chorus: 12, paper: 20, outro: 26, end: 32 };
 // ================================================================ 共用小工具（全部是 t 的純函式）
 const { clamp, lerp, prog, ease, pulse, hash, frameIdx, smoothstep } = MV;
 const bg = (c, col) => { c.fillStyle = col; c.fillRect(0, 0, W, H); };
-// 等寬標註：小字、字距寬；o.align 左右、o.typed 給秒數時逐字打出（每 2 格一字）
+// 「每格換一次」的東西全部用 MV.frameIdx(t)（格率 = MV.fps，render.py --fps 注入），不寫死 30：--fps 60 輸出時才不會每兩格才變一次
+// 逐字打出的字數：t0 起每秒 cps 字，量化到格（30 fps 時每 2 格一字）
+const typedCount = (t, t0, cps = 15) => Math.max(0, Math.floor((frameIdx(t) - frameIdx(t0)) * cps / MV.fps));
+// 閃爍：週期 period 秒、亮 duty 的比例（REC 燈 1 秒亮 0.6、caret 2/3 秒亮 0.6）
+const blink = (t, period = 1, duty = 0.6) => { const n = Math.max(1, Math.round(period * MV.fps)); return frameIdx(t) % n < Math.round(n * duty); };
+// 顯示用的 BPM：真實 audio.json 的 tempo 常是 120.009 這種小數，標註只印到 0.1、整數就不帶小數
+const bpmText = () => (+MV.audio.tempo).toFixed(1).replace(/\.0$/, '');
+// 遞增陣列裡最後一個 <= x 的索引（二分搜尋），全部 > x 回 −1；onset 計數與最近 onset 都用它
+const idxLE = (arr, x) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= x) lo = m + 1; else hi = m; } return lo - 1; };
+// 等寬標註：小字、字距寬；o.align 左右、o.typed 給秒數時從那一刻起逐字打出（每秒 15 字）
 function mono(c, text, x, y, o = {}) {
   const size = o.size ?? 22;
   const lay = MV.layout(c, text, { font: F.mono(size, o.weight ?? 500), size, tracking: o.tracking ?? size * 0.12 });
-  const n = o.typed == null ? Infinity : Math.max(0, Math.floor((frameIdx(o.t ?? 0, 30) - frameIdx(o.typed, 30)) / 2));
+  const n = o.typed == null ? Infinity : typedCount(o.t ?? 0, o.typed);
   MV.drawGlyphs(c, lay, x, y, { align: o.align || 'left', fill: o.color || C.neutral, alpha: o.alpha ?? 1, baseline: o.baseline,
     each: (g, i) => (i < n ? {} : null) });
   return lay;
@@ -82,16 +126,19 @@ function cornerMarks(c, col, alpha = 1, inset = 72, len = 26) {
   }
   c.restore();
 }
-// 雨線母題：每條線的 x、長度、速度由 hash 固定，位置由 t 決定；speed 0 時停住、straight 1 時全部躺平成一條橫線
+// 雨線母題：每條線的 x、長度、速度由 hash 固定，位置由等效位移 dist（秒）決定：預設 dist = t × speed（等速）
+//   要減速時給積分後的 o.dist（見 plateOutro），不要給隨 t 變小的 speed——t × speed(t) 的導數 = speed + t × speed′，t 大時雨會倒退
+//   straight 0→1：每條線只動 y 與 h（縮成 1.5 px 的點、落到 yLine），寬度始終 1.5 px；橫線由呼叫端另畫一條，
+//   不把 110 條線各自拉寬（中間態會變成滿畫面的灰色方塊，讀起來像故障）
 function rain(c, t, o = {}) {
-  const n = o.n ?? 110, speed = o.speed ?? 1, straight = o.straight ?? 0, yLine = o.yLine ?? H * 0.52;
-  c.save(); c.fillStyle = o.color || C.sub; c.globalAlpha = o.alpha ?? 0.4;
+  const n = o.n ?? 110, speed = o.speed ?? 1, straight = o.straight ?? 0, yLine = o.yLine ?? H * 0.52, dist = o.dist ?? t * speed;
+  c.save(); c.fillStyle = o.color || C.sub;
   for (let i = 0; i < n; i++) {
     const x = hash(i, 1) * W, len = 50 + hash(i, 2) * 190, v = 260 + hash(i, 3) * 420;
-    const y0 = ((t * v * speed + hash(i, 4) * (H + len) * 3) % (H + len)) - len;
-    const y = lerp(y0, yLine, straight), h = lerp(len, 1.5, straight), w = lerp(1.5, len * 0.6, straight);
+    const y0 = ((dist * v + hash(i, 4) * (H + len) * 3) % (H + len)) - len;
+    const y = lerp(y0, yLine, straight), h = lerp(len, 1.5, straight);
     c.globalAlpha = (o.alpha ?? 0.4) * (0.35 + 0.65 * hash(i, 5));
-    c.fillRect(x - w / 2 + 0.75, y, w, h);
+    c.fillRect(x, y, 1.5, h);
   }
   c.restore();
 }
@@ -99,25 +146,41 @@ function rain(c, t, o = {}) {
 const hasEnv = () => !!(MV.audio.env.rms && MV.audio.env.rms.length);
 const energy = f => (hasEnv() ? f.a.rms : 0.15 + 0.85 * Math.pow(0.5, f.beatPhase / 0.3));
 // 最近一次 kick 的時間：有 onset 用 onset，否則每拍都是 kick
+const hasKick = () => !!(MV.audio.onsets.kick && MV.audio.onsets.kick.length);
 function lastKick(t) {
-  const k = MV.audio.onsets.kick;
-  if (k && k.length) { let lo = 0, hi = k.length; while (lo < hi) { const m = (lo + hi) >> 1; if (k[m] <= t) lo = m + 1; else hi = m; } return lo ? k[lo - 1] : -1; }
+  if (hasKick()) { const k = MV.audio.onsets.kick, i = idxLE(k, t); return i < 0 ? -1 : k[i]; }
   return MV.timeOfBeat(Math.floor(MV.beatAt(t)));
 }
-const kickPulse = f => (MV.audio.onsets.kick?.length ? f.a.kick : pulse(f.t, lastKick(f.t), 0.12));
+const kickPulse = f => (hasKick() ? f.a.kick : pulse(f.t, lastKick(f.t), 0.12));
+// 從 t0 起算（含 t0）到 t 的 kick 次數：有 onset 數 onset，否則數拍
+const kickCount = (t, t0) => (hasKick() ? idxLE(MV.audio.onsets.kick, t) - idxLE(MV.audio.onsets.kick, t0 - 1e-6)
+  : Math.max(0, Math.floor(MV.beatAt(t) - MV.beatAt(t0)) + 1));
 // 從 t0 起算的 snare 次數：有 onset 用 onset，否則每小節第 2、4 拍
 function snareCount(t, t0) {
   const s = MV.audio.onsets.snare;
-  if (s && s.length) return s.filter(x => x >= t0 && x <= t).length;
+  if (s && s.length) return idxLE(s, t) - idxLE(s, t0 - 1e-6);
   let n = 0;
   for (let b = Math.ceil(MV.beatAt(t0)); b <= Math.floor(MV.beatAt(t)); b++) if (b % 4 === 1 || b % 4 === 3) n++;
   return n;
 }
-const timecode = t => { const f = frameIdx(t, 30), s = Math.floor(f / 30); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}:${String(f % 30).padStart(2, '0')}`; };
+// 時碼 mm:ss:ff，ff 依 MV.fps
+const timecode = t => { const fps = MV.fps, fi = frameIdx(t), s = Math.floor(fi / fps); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}:${String(fi % fps).padStart(2, '0')}`; };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 // 畫面抖動向量：幅度 amp，方向每格換一次
-const shakeVec = (t, amp) => { const fi = frameIdx(t, 30); return [(hash(fi, 11) - 0.5) * 2 * amp, (hash(fi, 12) - 0.5) * 2 * amp]; };
-const lineOr = (q, i) => MV.line(q) || (MV.lyrics && MV.lyrics.lines[i]) || null;
+const shakeVec = (t, amp) => { const fi = frameIdx(t); return [(hash(fi, 11) - 0.5) * 2 * amp, (hash(fi, 12) - 0.5) * 2 * amp]; };
+// 用內容找歌詞行；找不到時退回第 i 行（0 起）並用 console.error 印一次（render.py 只轉印 console.error，用 warn 看不到）
+// 換歌後看到這條訊息就改 plateChorus 的查詢字串，不要讓副歌砸錯字
+const toldLine = new Set();
+function lineOr(q, i) {
+  const l = MV.line(q);
+  if (l) return l;
+  const lines = (MV.lyrics && MV.lyrics.lines) || [], fb = lines[i] || null;
+  if (!toldLine.has(q)) {
+    toldLine.add(q);
+    console.error(`mv-template：副歌查詢字串「${q}」在這首歌找不到，改用第 ${i + 1} 行${fb ? `「${fb.text}」` : '（這首歌也沒有這一行）'}；請改 plateChorus 的 lineOr 查詢字串`);
+  }
+  return fb;
+}
 
 // ================================================================ plate 1：開場字卡
 function plateTitle(c, f) {
@@ -125,14 +188,15 @@ function plateTitle(c, f) {
   bg(c, C.ink);
   rain(c, f.t, { alpha: 0.38 });
   cornerMarks(c, C.neutral, 0.7);
-  // 左上：REC 燈＋時碼，開頭逐字打出；燈號每 15 格閃一次
-  const on = frameIdx(f.t, 30) % 30 < 18;
+  // 左上：REC 燈＋時碼，開頭逐字打出；燈號每秒閃一次（亮 0.6 秒）
+  const on = blink(f.t, 1, 0.6);
   c.fillStyle = C.main; c.globalAlpha = on ? 1 : 0.25; c.beginPath(); c.arc(112, 103, 7, 0, MV.TAU); c.fill(); c.globalAlpha = 1;
   mono(c, `REC  TC ${timecode(f.t)}`, 134, 110, { t: f.t, typed: t0 + 0.1, size: 22 });
-  mono(c, `${MV.audio.tempo} BPM   ${MV.audio.meter}/4   ${pad2(BAR.end)} BARS`, W - 100, 110, { align: 'right', t: f.t, typed: t0 + 0.5, size: 22 });
+  mono(c, `${bpmText()} BPM   ${MV.audio.meter}/4   ${pad2(BAR.end)} BARS`, W - 100, 110, { align: 'right', t: f.t, typed: t0 + 0.5, size: 22 });
   // 標題：逐字砸入（outBack 從 1.6 倍縮到 1），每字晚 1 格；主色錯位影子先落
-  const title = SONG.title, size = Math.floor(MV.fitSize(c, title, 1360, 232, F.serif));
-  const lay = MV.layout(c, title, { font: F.serif, size, tracking: size * 0.04 });
+  // 字級用 fitSize 塞進 1360×232，tracking（每字 0.04 em）要一起給，排出來的寬度才真的 ≤ 1360
+  const title = SONG.title, trackFn = px => px * 0.04, size = Math.floor(MV.fitSize(c, title, 1360, 232, F.serif, trackFn));
+  const lay = MV.layout(c, title, { font: F.serif, size, tracking: trackFn(size) });
   const tx = 160, ty = 600;
   // bar 0 數拍：每拍在橫線位置多一個小方塊（1 2 3 4），標題砸下時被取代——先鋪節奏再給重擊
   if (f.t < tSlam) {
@@ -143,7 +207,7 @@ function plateTitle(c, f) {
       c.fillRect(tx + i * 38, ty + 32 + (1 - u) * 10, 22, 22 * u);
     }
     c.globalAlpha = 1;
-    mono(c, 'COUNT IN', tx + 170, ty + 52, { size: 16, alpha: 0.6 * prog(f.t, t0, t0 + 0.3) });
+    mono(c, 'COUNT IN', tx + 170, ty + 52, { size: 18, alpha: 0.6 * prog(f.t, t0, t0 + 0.3) });
   }
   if (f.t >= tSlam) {
     const each = (g, i) => { const u = prog(f.t, tSlam + i * 0.033, tSlam + i * 0.033 + 0.24, ease.outBack); return { scale: lerp(1.6, 1, u), alpha: clamp(u * 4) }; };
@@ -187,14 +251,15 @@ function plateVerse(c, f) {
   for (let x = 0; x <= W; x += 12) (x ? c.lineTo : c.moveTo).call(c, x, curve(x));
   c.stroke(); c.restore();
   // 左側 VU：有包絡線資料時 rms／low／mid／high 四條；沒資料時只畫一條（拍相位脈衝）並標明
+  // 標籤 18 px（1080p 最小字級），條距 56 px 讓 'HIGH' 四個等寬字不互相壓到
   const vu = hasEnv() ? [['RMS', f.a.rms], ['LOW', f.a.low], ['MID', f.a.mid], ['HIGH', f.a.high]] : [['RMS', E]];
   vu.forEach(([name, v], i) => {
-    const x = 160 + i * 40, hgt = 150 * clamp(v);
+    const x = 160 + i * 56, hgt = 150 * clamp(v);
     c.fillStyle = C.neutral; c.globalAlpha = 0.25; c.fillRect(x, H - 230 - 150, 16, 150);
     c.fillStyle = C.sub; c.globalAlpha = 0.9; c.fillRect(x, H - 230 - hgt, 16, hgt); c.globalAlpha = 1;
-    mono(c, name, x + 8, H - 204, { size: 13, align: 'center', tracking: 1 });
+    mono(c, name, x + 8, H - 202, { size: 18, align: 'center', tracking: 1 });
   });
-  if (!hasEnv()) mono(c, 'GRID · NO ENV', 160, H - 176, { size: 13, tracking: 1, alpha: 0.6 });
+  if (!hasEnv()) mono(c, 'GRID · NO ENV', 160, H - 170, { size: 18, tracking: 1, alpha: 0.6 });
   // 歌詞：每行在 start 前 0.6 秒淡入、end 後 0.8 秒淡出；字沿曲線排、切線方向旋轉；亮字用 lineCharProgress
   const lines = (MV.lyrics && MV.lyrics.lines) || [];
   let shown = 0, lit = 0;
@@ -235,27 +300,43 @@ function plateChorus(c, f) {
   if (ln) { const w = ln.words.find(w => f.t >= w.start && f.t < w.end) || [...ln.words].reverse().find(w => f.t >= w.start); if (w) ch = w.w; }
   const fgs = [C.paper, C.ink, '#fff'], bgs = [C.ink, C.main, null];
   if (v === 2) { bg(c, C.paper); c.fillStyle = C.ink; c.fillRect(W / 2, 0, W / 2, H); } else bg(c, bgs[v]);
-  // 砸字：每個 kick 從 1.45 倍縮到 1（outExpo），字高約畫面 78%；版面 2 用 difference 讓字跨越分割線時自動反白
-  const size = 760, s = lerp(1.45, 1, prog(f.t, tk, tk + 0.22, ease.outExpo));
-  const pos = [[W / 2, H / 2], [W * 0.62, H * 0.5], [W / 2, H * 0.5]][v];
+  // 砸字（中英都支援）：字級由 MV.fitSize 決定——中文一字最高 620 px（約畫面 57%），英文單字（Tomorrow）依寬度縮到 W 的 88% 內；
+  // 每個 kick 從 over 倍縮到 1（outExpo）；over 最多 1.3，再依字寬、字高壓低，砸到最大那一格也不出畫面、不壓到下方歌詞帶（H−130 以下）
+  // 字心放 H*0.47：上方留給角落標註（它們在左右兩側，和字不重疊），下方留 130 px 給歌詞帶；版面 C 用 difference 讓字跨越分割線時自動反白
+  const slamFont = px => F.serif(px, 900), cy = H * 0.47, lyricTop = H - 130;
+  const size = Math.floor(MV.fitSize(c, ch, W * 0.88, 620, slamFont));
+  c.font = slamFont(size);
+  const gw = Math.max(1, c.measureText(ch).width);
+  const over = Math.max(1, Math.min(1.3, (W * 0.98) / gw, ((lyricTop - cy) * 2) / size));
+  const s = lerp(over, 1, prog(f.t, tk, tk + 0.22, ease.outExpo));
+  const cxB = Math.min(W * 0.62, W - 40 - (gw * over) / 2);     // 版面 B 字心偏右，但長英文字砸到最大時右緣也要留在畫面內
+  const pos = [[W / 2, cy], [cxB, cy], [W / 2, cy]][v];
   c.save(); c.translate(pos[0], pos[1]); c.scale(s, s);
-  c.font = F.serif(size, 900); c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = slamFont(size); c.textAlign = 'center'; c.textBaseline = 'middle';
   if (v === 2) c.globalCompositeOperation = 'difference';
   c.fillStyle = fgs[v]; c.fillText(ch, 0, size * 0.02);
   c.restore();
-  // 標註：段名、小節／拍、kick 計數；版面 1 用墨色；版面 2 跨越分割線，整組用 difference 畫，兩邊都讀得到
+  // 標註：段名、小節／拍、kick 計數（有 onsets.kick 時數真的 kick，否則數拍並標 BEAT）；版面 B 用墨色；版面 C 跨越分割線，整組用 difference 畫，兩邊都讀得到
   c.save();
   if (v === 2) c.globalCompositeOperation = 'difference';
   const lab = v === 1 ? C.ink : v === 2 ? '#9a9a9a' : C.neutral, strong = v === 1 ? C.ink : v === 2 ? '#fff' : C.paper;
   mono(c, 'CHORUS', 160, 110, { size: 22, color: strong, alpha: 0.85 });
   mono(c, `BAR ${pad2(f.bar)} · ${Math.floor(f.beat) % MV.audio.meter + 1}/${MV.audio.meter}`, 160, 140, { size: 20, color: lab });
-  mono(c, `KICK ${String(Math.max(0, Math.floor(MV.beatAt(f.t) - MV.beatAt(f.entry.start)) + 1)).padStart(3, '0')}`, W - 100, 110, { align: 'right', size: 20, color: lab });
+  mono(c, `${hasKick() ? 'KICK' : 'BEAT'} ${String(kickCount(f.t, f.entry.start)).padStart(3, '0')}`, W - 100, 110, { align: 'right', size: 20, color: lab });
   mono(c, `LAYOUT ${String.fromCharCode(65 + v)}`, W - 100, 140, { align: 'right', size: 20, color: lab });
-  // 下方整行歌詞 karaoke（亮字永不超前）
-  if (ln) MV.karaoke(c, ln, f.t, { x: W / 2, y: H - 112, size: 38, font: px => F.sans(px, 700), align: 'center', maxW: 1400, tracking: 4,
-    sung: strong, unsung: v === 1 ? 'rgba(15,18,22,0.35)' : v === 2 ? 'rgba(255,255,255,0.4)' : 'rgba(139,144,150,0.55)' });
   c.restore();
-  return { shake: shakeVec(f.t, 24 * k), flash: v === 1 ? 0 : 0.38 * k, zoom: 1 + 0.035 * k, halation: v === 0 ? 0.18 : 0 };
+  // 下方整行歌詞 karaoke（亮字永不超前）：固定在字幕區（基線 H−74，動作安全區內），和砸字分開、不壓到主體
+  // 版面 C 不用 difference 畫字（落在紙／墨兩色上會變中灰），改先鋪一條墨色帶（0.85）再畫 sung／unsung，兩邊都讀得到
+  if (ln) {
+    if (v === 2) { c.save(); c.fillStyle = C.ink; c.globalAlpha = 0.85; c.fillRect(0, lyricTop, W, 90); c.restore(); }
+    MV.karaoke(c, ln, f.t, { x: W / 2, y: H - 74, size: 38, font: px => F.sans(px, 700), align: 'center', maxW: 1400, tracking: 4,
+      sung: v === 1 ? C.ink : C.paper, unsung: v === 1 ? 'rgba(15,18,22,0.35)' : 'rgba(239,232,219,0.4)' });
+  }
+  // 閃白是標點符號（craft.md：一小節最多一次、一段落最多四次、半衰期 0.05–0.08 秒）：只在每 2 小節的樂句頭（downbeat）亮一次，
+  // 峰值 0.5、半衰期 0.05 秒（第 2 格剩 0.2）。kick 只做 shake 與 zoom punch——每拍都閃等於沒有重音，還會把版面 A 的墨底洗成灰
+  const barI = Math.floor(f.bar), phraseHead = (barI - BAR.chorus) % 2 === 0;
+  const flash = v === 1 || !phraseHead ? 0 : 0.5 * pulse(f.t, MV.timeOfBar(barI), 0.05);
+  return { shake: shakeVec(f.t, 24 * k), flash, zoom: 1 + 0.035 * k, halation: v === 0 ? 0.18 : 0 };
 }
 
 // ================================================================ plate 4：反轉版面（紙底墨線表單）
@@ -274,7 +355,7 @@ function platePaper(c, f) {
   // 表格：每一列在接下來的一拍出現（線由左向右畫出），值逐字打出
   const stamped = f.t >= tStamp;
   const rows = [
-    ['曲名', SONG.title], ['演出', SONG.artist], ['拍速', `${MV.audio.tempo} BPM`], ['拍號', `${MV.audio.meter}/4`],
+    ['曲名', SONG.title], ['演出', SONG.artist], ['拍速', `${bpmText()} BPM`], ['拍號', `${MV.audio.meter}/4`],
     ['小節', `${pad2(f.bar)} / ${pad2(BAR.end)}`], ['能量', null], ['狀態', stamped ? `已核　${timecode(tStamp)}` : '待核'],
   ];
   const x0 = 160, x1 = W - 160, yTop = 236, rh = 92;
@@ -284,7 +365,7 @@ function platePaper(c, f) {
     if (u <= 0) return;
     const y = yTop + (i + 1) * rh;
     c.fillStyle = C.ink; c.globalAlpha = 0.9; c.fillRect(x0, y, (x1 - x0) * u, 1.5); c.globalAlpha = 1;
-    mono(c, pad2(i + 1), x0, y - 34, { size: 16, color: C.ink, alpha: 0.5 });
+    mono(c, pad2(i + 1), x0, y - 34, { size: 18, color: C.ink, alpha: 0.5 });
     mono(c, label, x0 + 60, y - 30, { size: 26, color: C.ink, alpha: 0.85, tracking: 10 });
     c.fillStyle = C.ink; c.fillRect(x0 + 330, y - rh + 24, 1, rh - 24);
     if (value === null) {
@@ -294,12 +375,12 @@ function platePaper(c, f) {
       mono(c, E.toFixed(2), x1 - 16, y - 32, { size: 20, color: C.ink, align: 'right' });
     } else {
       const lay = MV.layout(c, value, { font: px => F.sans(px, 700), size: 40, tracking: 2 });
-      const n = Math.floor((frameIdx(f.t, 30) - frameIdx(tb, 30)) / 2);
+      const n = typedCount(f.t, tb);
       const x0v = MV.drawGlyphs(c, lay, x0 + 380, y - 26, { fill: C.ink, each: (g, j) => (j < n ? {} : null) });
-      // 打字 caret：還沒打完或狀態列待核時閃爍
+      // 打字 caret：還沒打完或狀態列待核時閃爍（2/3 秒一次）
       if (n < lay.glyphs.length || (i === rows.length - 1 && !stamped)) {
         const gx = n < lay.glyphs.length ? x0v + lay.glyphs[n].x : x0v + lay.width + 8;
-        if (frameIdx(f.t, 30) % 20 < 12) { c.fillStyle = C.main; c.fillRect(gx, y - 58, 3, 42); }
+        if (blink(f.t, 2 / 3, 0.6)) { c.fillStyle = C.main; c.fillRect(gx, y - 58, 3, 42); }
       }
     }
   });
@@ -325,10 +406,16 @@ function plateOutro(c, f) {
   // 黑邊從 16:9 慢慢收到 2.2:1；角落記號與 REC 都要避開黑邊
   const lb = lerp(16 / 9, 2.2, smoothstep(0, 0.3, p)), barH = Math.max(0, (H - W / lb) / 2);
   bg(c, C.ink);
-  // 雨線減速並躺平成一條橫線（母題收束）；橫線接著收成一段短線
-  const slow = 1 - smoothstep(0, 0.55, p), straight = smoothstep(0.35, 0.7, p);
-  rain(c, lerp(f.t, t0 + 6.5, straight) , { alpha: 0.4 * (1 - smoothstep(0.75, 0.9, p)), speed: slow, straight, yLine: H * 0.52 + 44 });
-  if (p > 0.72) { const u = smoothstep(0.72, 0.9, p); c.fillStyle = C.paper; c.globalAlpha = u; c.fillRect(W / 2 - 300 * (1 - u), H * 0.52 + 44, 600 * (1 - u) + 2, 2); c.globalAlpha = 1; }
+  // 母題收束，分三段、每段只變一件事：
+  //   p 0–0.55   雨線減速到停：速度 1 − smoothstep(0, 0.55, p)，位移 dist 用它的積分（∫smoothstep = u³ − u⁴/2），不是 t × speed
+  //   p 0.35–0.65 每條線縮成 1.5 px 的點、落到 yLine（寬度不變，中間態不會變成方塊）
+  //   p 0.62–0.76 一條橫線從中心長到 1360 px、點淡出；p 0.80–0.93 橫線收成 2 px 一點
+  const yLine = H * 0.52 + 44, D = t1 - t0, su = clamp(p / 0.55);
+  const dist = t0 + (f.t - t0) - 0.55 * D * (su * su * su - su * su * su * su / 2);
+  const straight = smoothstep(0.35, 0.65, p), grow = smoothstep(0.62, 0.76, p);
+  rain(c, f.t, { dist, alpha: 0.4 * (1 - grow), straight, yLine });
+  const lineW = MV.keys(p, [[0.62, 0], [0.76, 1360, 'outCubic'], [0.80, 1360], [0.93, 2, 'inOutCubic']]);
+  if (lineW > 0) { c.fillStyle = C.paper; c.globalAlpha = 0.9 * smoothstep(0.62, 0.66, p); c.fillRect(W / 2 - lineW / 2, yLine, lineW, 2); c.globalAlpha = 1; }
   cornerMarks(c, C.neutral, 0.7 * (1 - smoothstep(0.8, 0.95, p)), 72 + barH);
   // 曲名：寬字距小字，bar 27 淡入；下方等寬「END OF TAKE」bar 28 出現
   if (b >= 1) {
@@ -338,7 +425,7 @@ function plateOutro(c, f) {
   }
   if (b >= 2) mono(c, `END OF ${SONG.take}`, W / 2, H * 0.52 + 92, { align: 'center', size: 20, alpha: 0.8 * prog(f.t, MV.timeOfBar(BAR.outro + 2), MV.timeOfBar(BAR.outro + 2) + 0.4) });
   // REC 燈回來，bar 31 熄滅；時碼走到最後
-  const recOn = b < 5 && frameIdx(f.t, 30) % 30 < 18;
+  const recOn = b < 5 && blink(f.t, 1, 0.6);
   c.fillStyle = C.main; c.globalAlpha = b < 5 ? (recOn ? 1 : 0.25) : 0.12; c.beginPath(); c.arc(112, 103 + barH, 7, 0, MV.TAU); c.fill(); c.globalAlpha = 1;
   mono(c, `REC  TC ${timecode(f.t)}`, 134, 110 + barH, { size: 22, alpha: 0.8 });
   return {
@@ -361,10 +448,17 @@ function build() {
   // render.py --scale 2 用 deviceScaleFactor 2 → 畫布實際 3840×2160，版面仍是 1920×1080；瀏覽器預覽固定 1 倍求順
   const DPR = navigator.webdriver ? (window.devicePixelRatio || 1) : 1;
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  const ctx = cv.getContext('2d');
-  const tl = MV.timeline(PLATES, { W, H, scale: DPR, post: { grain: 0.09, vignette: 0.32, halation: 0.12, tint: 'rgba(255,170,90,0.07)' } });
+  // 畫布的 CSS 尺寸依 W／H：寬滿版、高按比例、不超過視窗高（1920×1080 視窗下剛好 1920×1080，render.py 的截圖才不會多黑邊）
+  cv.style.width = '100vw'; cv.style.height = `${(100 * H / W).toFixed(4)}vw`;
+  cv.style.maxHeight = '100vh'; cv.style.maxWidth = `${(100 * W / H).toFixed(4)}vh`;
+  // 主畫布用 MV.ctxAttrs（willReadFrequently）：和工具庫的離屏畫布同一種後端，drawImage 不必跨 GPU／CPU 搬圖，顆粒與 --samples 的讀回也便宜
+  const ctx = cv.getContext('2d', MV.ctxAttrs);
+  // 全片後製：顆粒 0.09、暈影 0.32、暖色 tint；halation 不開在全片（每格 +0.1 秒），只在 plateChorus 版面 A 回傳覆寫
+  // 長片想再省時間：這裡 grain 設 0，顆粒改在 ffmpeg 加（見檔頭「怎麼輸出」）
+  const tl = MV.timeline(PLATES, { W, H, scale: DPR, post: { grain: 0.09, vignette: 0.32, tint: 'rgba(255,170,90,0.07)' } });
   window.DURATION = PLATES[PLATES.length - 1].end;
-  window.CUTS = tl.cuts;
+  window.CUTS = tl.cuts;                 // 新畫面落定的拍點（render.py --cuts 讀）
+  window.TRANSITIONS = tl.transitions;   // 每個轉場的畫面變化區間 from～to（用 ffmpeg 偵測剪點時拿這個比對）
   window.TL = tl;
   window.render = t => { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); tl.render(ctx, t); };
   window.render(0);
@@ -401,9 +495,12 @@ async function loadData() {
 function preview(tl) {
   const hud = document.createElement('div'); hud.id = 'hud'; document.body.appendChild(hud);
   let playing = false, tCur = 0, anchor = 0, useAudio = false;
-  const au = new Audio('./data/song.mp3');
-  au.addEventListener('canplaythrough', () => { useAudio = true; });
-  au.addEventListener('error', () => { useAudio = false; });
+  // 只有用 http 伺服器開頁才載 ./data/song.mp3 當時鐘；file:// 直接雙擊開檔時不試（沒有這個檔會印 ERR_FILE_NOT_FOUND），直接用 performance.now
+  const au = /^https?:/.test(location.protocol) ? new Audio('./data/song.mp3') : null;
+  if (au) {
+    au.addEventListener('canplaythrough', () => { useAudio = true; });
+    au.addEventListener('error', () => { useAudio = false; });
+  }
   const now = () => (useAudio ? au.currentTime : playing ? tCur + (performance.now() - anchor) / 1000 : tCur);
   const seek = t => { tCur = clamp(t, 0, window.DURATION); anchor = performance.now(); if (useAudio) au.currentTime = tCur; };
   const toggle = () => { tCur = now(); anchor = performance.now(); playing = !playing; if (useAudio) (playing ? au.play() : au.pause()); };
@@ -413,8 +510,8 @@ function preview(tl) {
     if (e.code === 'Space') { e.preventDefault(); toggle(); }
     else if (e.key === 'ArrowLeft') seek(now() - step);
     else if (e.key === 'ArrowRight') seek(now() + step);
-    else if (e.key === ',') seek(now() - 1 / 30);
-    else if (e.key === '.') seek(now() + 1 / 30);
+    else if (e.key === ',') seek(now() - 1 / MV.fps);          // 逐格：一格 = 1/MV.fps 秒，MV.fps = 60 時才不會一次跳兩格
+    else if (e.key === '.') seek(now() + 1 / MV.fps);
     else if (e.key === '[') cutJump(-1);
     else if (e.key === ']') cutJump(1);
     else if (e.key === 'h') hud.classList.toggle('hidden');
@@ -424,7 +521,8 @@ function preview(tl) {
     if (t >= window.DURATION) { playing = false; t = window.DURATION; tCur = t; if (useAudio) au.pause(); }
     window.render(t);
     const s = MV.sectionAt(t), e = tl.entryAt(t);
-    hud.textContent = `t ${t.toFixed(2)}s  beat ${MV.beatAt(t).toFixed(2)}  bar ${MV.barAt(t).toFixed(2)}  section ${s.name}  plate ${e.id}  ${playing ? '▶' : '❚❚'}${useAudio ? '  audio' : '  clock'}\nspace 播放  ←→ ±1s  shift ±5s  , . 逐格  [ ] 剪點  h 隱藏`;
+    const clock = useAudio ? 'audio' : au ? 'clock（data/song.mp3 未載入）' : 'clock（file://，無 data/song.mp3）';
+    hud.textContent = `t ${t.toFixed(2)}s  beat ${MV.beatAt(t).toFixed(2)}  bar ${MV.barAt(t).toFixed(2)}  section ${s.name}  plate ${e.id}  ${playing ? '▶' : '❚❚'}  ${clock}\nspace 播放  ←→ ±1s  shift ±5s  , . 逐格  [ ] 剪點  h 隱藏`;
     requestAnimationFrame(loop);
   };
   loop();

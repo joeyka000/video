@@ -2,7 +2,7 @@
 
 從 `~/video-lab/refs/awesome-opus5-5-videos`（475 支）挑出 29 支與 MV、歌詞動畫、音訊反應、動態字型排印（kinetic typography）、生成／藝術影片、電影感 3D 相關，且 prompt 寫得完整到手法可以遷移的。每支只借「做法」；文案、角色、品牌、歌曲一律換成自己的。
 
-- 原文：`prompts/<slug>.md`；索引：`data/videos.json`（欄位 slug／author／category／tech_tags／prompt／prompt_partial／post_url／skillry_url／added）
+- 原文：`prompts/<slug>.md`；索引：`data/videos.json`（欄位 slug／author／author_url／category／tech_tags／prompt／prompt_partial／post_url／poster_url／skillry_url／added）
 - 標「貼文」= `prompt_partial: true`，作者沒公開完整 prompt，只有貼文描述，借概念不借規格
 - 標「anime.md 已有」= `references/anime.md` 已列，這裡只補 MV 角度
 - 對應工具：`assets/mv-kit.js`（`MV.*`）、`scripts/render.py`（`--samples`、`--sheet`）、`scripts/analyze.py`（`audio.json`）、`scripts/align.py`（`lyrics.json`）
@@ -98,7 +98,7 @@ threejs · svg · audio｜機械鍵盤解說片：配樂程式寫、真實軸體
 
 ### techhalla-498547 — @techhalla
 canvas｜20 秒方形識別片頭：三套字型分工、六句鎖定文案、120 BPM 前 16 拍每拍一事、首尾同格可接回。
-- 字型分工：展示用超粗縮窄體（1–4 字）、都市粗體（次標）、等寬體（小標與時間碼），字距各自規定（展示 −40 到 −80，等寬 +20）
+- 字型分工：展示用超粗縮窄體（最多 1–4 個英文單字，繁中換算成一行短語）、都市粗體（次標）、等寬體（小標與時間碼），字距各自規定（展示 −40 到 −80，等寬 +20）
 - 每字一組彈簧（y／透明度／模糊），stagger 用 1/16 音符（120 BPM＝125 ms）；印刷錯位只在重音格：文字層複製成兩色各偏 2–4 px、40% 透明
 - 遮罩揭示：用上一句字形輪廓當下一句的遮罩；鏡頭只准 punch-in 1.0→1.08 與橫向 smash-pan；正式渲染前先出 8 格大拍靜幀
 - 注意：色票、文案、品牌是對方的；禁止清單（腦、機器人、神經網路、閃粉、紫藍霓虹、玻璃擬態）可照用
@@ -111,7 +111,7 @@ canvas｜20 秒「字型建築」口白短片：五句話，關鍵字各有結�
 - 注意：五句講稿是對方原創，要自己寫；不可把講稿歸給真實人物
 
 ### daniel-haida-636937 — @daniel_haida（貼文，但貼文附了完整 prompt）
-canvas · svg · css｜15 秒產品片規格書：ONE SHOT = ONE IDEA、物件驅動轉場、轉場好壞清單、19 條禁令、十個時間點抽格自檢。
+canvas · svg · css｜15 秒產品片規格書：ONE SHOT = ONE IDEA、物件驅動轉場、轉場好壞清單、19 條核心創意規則（約十條是 No 清單）、十個時間點抽格自檢。
 - 轉場清單：好＝圖表線→單據邊、數字→發票金額、共用幾何、用產品形狀做遮罩揭示；壞＝交叉淡化、隨機擦除、旋轉、故障、兩秒一次甩鏡、縮放模糊
 - 動態規格：cubic-bezier(0.16,1,0.3,1)、超調 < 2%、各元素到達時間錯開、場與場共享速度；按 115–120 BPM 設計，沒有安全音軌就只交畫面＋cue sheet
 - 品質門檻：「每個重要格都能當平面廣告」「三個極好的瞬間勝過十個普通動畫」；在 0、1、2.5、4.5…14.8 秒抽格親眼看，不以編譯成功為完成
@@ -239,8 +239,8 @@ cd ~/video-lab/refs/awesome-opus5-5-videos   # python = ~/video-lab/.venv/bin/py
 python -c "import json;d=json.load(open('data/videos.json'));[print(v['slug'],'@'+v['author'],','.join(v['tech_tags'])) for v in d if 'audio' in v['tech_tags']]"
 # 依關鍵字：prompt 含 lyric（5 支）
 python -c "import json;d=json.load(open('data/videos.json'));[print(v['slug'],'@'+v['author'],v['category']) for v in d if 'lyric' in v['prompt'].lower()]"
-# 只看完整 prompt、依長度排序（長的通常規格最完整）
-python -c "import json;d=json.load(open('data/videos.json'));[print(len(v['prompt']),v['slug']) for v in sorted(d,key=lambda v:-len(v['prompt'])) if not v['prompt_partial']]" | head -30
+# 只看完整 prompt（279 支）、依長度排序取前 30（長的通常規格最完整）；在 python 裡切片，不用 head 截斷（head 提早關管線會讓 python 印 BrokenPipeError）
+python -c "import json;d=json.load(open('data/videos.json'));full=[v for v in sorted(d,key=lambda v:-len(v['prompt'])) if not v['prompt_partial']];[print(len(v['prompt']),v['slug']) for v in full[:30]]"
 # 找有 seek(t) 做法的 prompt（15 支）
 grep -l -i 'seek(t)' prompts/*.md
 # 讀單支原文

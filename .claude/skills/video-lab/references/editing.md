@@ -19,7 +19,7 @@ const cutBefore = (query, nth = 0, tol = 0.02) => {
 };
 const afterLine = (query, nth = 0) => MV.timeOfBar(Math.round(MV.barAt(MV.line(query, nth).end)));
 ```
-- 實拍（Python，讀 audio.json 與 lyrics.json；實測 R20）：
+- 實拍（Python，讀 audio.json 與 lyrics.json；實測見文末表最後一列）：
 ```python
 import json, bisect
 au = json.load(open('data/audio.json')); ly = json.load(open('data/lyrics.json'))
@@ -42,26 +42,29 @@ def after(query, nth=0):                               # 行尾最近的 downbea
 
 | 段落 | 每小節刀數 | 鏡頭語言 | 強度 |
 |---|---|---|---|
-| 前奏 intro | 0.25–0.5（每 2–4 小節一刀） | 建立鏡頭、空景、慢推；第一格就要有主題（開場鉤子） | 30–40% |
-| 主歌 verse | 0.5–1 | 中景跟人、對稱構圖；段內子剪每 2 小節一次 | 60–70% |
-| 導歌 pre-chorus | 1–2，逐小節加密 | 越剪越近（中景→特寫），最後 2 小節每拍一個 punch-in，把能量推上副歌 | 80–90% |
+| 前奏 intro | 0.25–0.5（每 2–4 小節一刀）或 0（不切） | 建立鏡頭、空景、慢推；第一格就要有主題（開場鉤子） | 30–40% |
+| 主歌 verse | 1（每小節一刀，含子剪） | 中景跟人、對稱構圖、動作在畫面內不靠剪；大切每 2 小節在 downbeat，中間一次子剪 | 60–70% |
+| 導歌 pre-chorus | 2（每 2 拍一刀），逐小節加密到每拍 | 越剪越近（中景→特寫），最後 2 小節每拍一個 punch-in，把能量推上副歌 | 80–90% |
 | 副歌 chorus | 2–4（每 1–2 拍一刀） | 特寫與全景交替、符號鏡頭、招牌動作每次副歌重複；白閃只放第一個 downbeat | 100% |
 | 間奏 interlude | 1 | 器樂主導：長鏡頭跟運動、鏡頭運動 ease 進 downbeat，少剪多動 | 70% |
-| 橋段 bridge | 0.25–0.5 | 止め絵、慢動作、留白、靜止格；為最後一次副歌蓄力 | 40–50% |
-| 尾奏 outro | 4（每拍一刀）或 0（一鏡到底） | 每拍一刀的回顧蒙太奇，或單一長鏡頭收尾；首尾畫面呼應讓影片可以首尾相接重播 | 100% → 0% |
+| 橋段 bridge | 0–0.25（一鏡到底或 4 小節一刀） | 止め絵、慢動作、留白、靜止格、抽掉顏色；為最後一次副歌蓄力 | 40–50% |
+| 最後副歌 final chorus | 4–8（每拍一刀，可加八分音符子剪） | 招牌動作的極限版、全片唯一的強調色；比第一次副歌密 | 100% |
+| 尾奏 outro | 4（每拍一刀）或 0（一鏡到底） | 每拍一刀的回顧蒙太奇，或單一長鏡頭收回首格；首尾畫面呼應讓影片可以首尾相接重播 | 100% → 0% |
 
+- 這是唯一的密度表；`mv-direction.md` 第五節〈段落能量 → 剪輯密度與鏡頭語言〉的段落列（含間奏）與數字與此相同，改動時以本表為準、兩表一起改
 - 密度曲線要貼著能量曲線（anime-op 分鏡的做法：第三段主歌起加快、橋段放慢、尾奏每拍一刀）；最後一次副歌要比第一次密
 - 同一段落內不要均勻：小節 1、3 重，2、4 輕，觀眾才感覺得到「拍」而不是「頻率」
 
 ### 4. 緩急：標點符號原則
-- 止め絵、白閃、衝擊格、停格、反轉是標點符號，只放最重的拍：每段副歌的第一個 downbeat、橋段結尾、全曲最高點。一分鐘不超過 4 個（做法見 anime.md〈節奏原則〉與〈實拍 2、4、6〉）
-- 重拍前留一拍「吸氣」：副歌前最後一拍可以空（黑場、停格、靜止鏡頭），下一個 downbeat 的衝擊會放大（配方 18）
+- 止め絵、白閃、衝擊格、停格、反轉是標點符號，只放最重的拍：每段副歌的第一個 downbeat、橋段結尾、全曲最高點。上限只有一條、以 craft.md〈標點符號原則〉為準：一小節最多一次、一段落最多四次（跟 BPM 無關；做法見 anime.md〈節奏原則〉與〈實拍 2、4、6〉）
+- 重拍前留一拍「吸氣」：副歌前最後一拍可以空（黑場、停格、靜止鏡頭），下一個 downbeat 的衝擊會放大（配方 17）
 
 ### 5. 段內子剪（同一場景不換鏡）
 - reframing：同一鏡頭硬切到另一個裁切（1.0 → 1.3 倍、換角落），落在拍上，長鏡頭不會悶（配方 10e）
-- punch-in：拍點瞬間放大 8–25% 再彈回或停住，用在 kick、snare、重複的副歌字（配方 10b、13c）
+- punch-in：拍點瞬間放大 4–8%（1.04–1.08）再指數回彈或停住，用在 kick、snare、重複的副歌字（配方 10b、13c）；幅度以 craft.md〈震動、閃爍、縮放、鏡頭〉為準，超過 1.1 像縮放錯誤。要更大的構圖跳變（1.3 倍、換角落）用 reframing：它是剪點，不受 punch-in 的上限
 - roll：鏡頭從 −3° 轉回 0°，結束在 downbeat（配方 10d）
 - 三者都是 t 的函式：程式動畫用 `ctx.translate／scale／rotate` 包住場景再畫；實拍用 `scale`＋`crop`／`rotate` 的表示式
+- 子剪也落在拍上（kick、snare）；八分音符子剪與拍間的反拍切在 cuts.csv 的 `beat` 填半拍（2.5）。反拍切（大切落在 beat 2、4 或拍間）一支片只用一兩次，當作「失衡」的語彙，cuts.csv 的 label 要註明是刻意的
 
 ### 6. 鏡頭運動要 ease 進 downbeat
 - 運動「結束」在拍上，不是開始在拍上：推進、搖、轉用 `outCubic`／`outExpo` 讓終點正好落在 downbeat，觀眾把拍點感知為「到位」
@@ -70,10 +73,50 @@ def after(query, nth=0):                               # 行尾最近的 downbea
 
 ### 7. 不要改原片速度硬湊拍點
 - 節奏不合就換素材或換 in-point。速度只為設計服務（刻意的慢動作、斜坡），不是對拍工具；cuts.csv 的 `speed` 欄同理
-- 慢動作要補格（配方 3c）或用高幀率原片；快轉超過 2 倍要加動態模糊（配方 7 的 tmix 做法），不然像跳格
+- 慢動作要補格（配方 3c）或用高格率原片（60 fps 以上）；快轉超過 2 倍要加動態模糊（配方 7 的 tmix 做法），不然像跳格
 
 ### 8. 動作接動作
 - 兩個鏡頭在同一個動作的中途相接（action cut），動作本身蓋掉剪點，是最不被察覺的剪法；拍點上的剪接尤其要這樣，觀眾才覺得畫面「打在拍上」而不是「剛好換了」
+
+### 9. 情緒優先於拍格的例外
+- Murch 的六條優先序是情緒、故事、節奏、視線、畫面二維、三維空間（出處）。MV 的節奏由歌曲先決定，所以本文其餘條目都在講「服從節奏」；違背節奏的名額要先留好：一支片 2–3 處不剪在拍上、或跨過 downbeat 續留一鏡，每一處都要說得出理由，寫進 cuts.csv 的 label 或分鏡表備註
+- 可以跨過 downbeat 續留一鏡的三種情況：
+  - 表演高點：眼神、吸氣、一個動作做到一半。剪掉就是殺掉表演；續留到動作完成後的下一個拍點（beat 2、3、4 都可以）再切，不必等下一個 downbeat
+  - 歌詞語意轉折：一行的意思在最後一個字才翻（「我以為你會留下」唱到「留下」才知道是沒有），畫面停在那張臉上直到字唱完，用 `after()`（行尾最近的 downbeat）而不是 `cut()`
+  - 反應鏡頭：事件在拍上發生，但觀眾要看到「人看見了」；反應鏡頭可以晚 1–2 拍進，長度不必是整數拍
+- 規則：不在拍上的那一刀，前後兩刀都要在拍上，觀眾才讀得出它是刻意的；連續兩刀都不在拍上只是鬆
+- 量法：qa.py 的「±1 格內 ≥ 90%」留給這些例外，不是給誤差；例外以外的剪點要 100% 命中。例外的列在 label 寫「跨拍 理由」，看 report.md 時才對得起來
+
+### 10. 對嘴鏡頭對時（lip-sync）
+- 對嘴鏡頭的 `in` 不能用眼睛填：差 2 格（67 ms）口型就穿幫，差 1 格看得出「軟」。拍攝端的規則（每個 take 都用同一份回放、機內收音不關、起播小節寫進檔名、慢動作用 k 倍速回放）見 `mv-direction.md`〈表演型實拍規則〉
+- 以主音軌為準：把 take 的機內收音抽出來，與現場實際回放的檔（母帶 `song.wav`；慢動作時是 `song_x2.wav` 這種 k 倍速版）做能量包絡的交叉相關（cross-correlation），得到 L = take 的 0 秒在回放檔的第幾秒；該列的 `in = T / k − L`，T 是那列 bar／beat 的歌曲秒（`downbeats[bar] + (beat − 1) × 拍長`），正常回放 k = 1。搜尋視窗限制在起播小節附近，不然歌的重複段會對到別處
+- 多機位、多 take：每支檔各算一次 L；同一句的不同 take 在剪點表只換 `src` 與 `in`，`bar`／`beat` 不動
+- 指令（實測：合成 take 在 k = 1 與 k = 2 都與真值差 0 ms，見文末表；`python -` 後面的引數依序是回放檔、take 音軌、起播小節、k）：
+```bash
+ffmpeg -i media/take.mp4 -vn -ac 1 -ar 44100 out/take.wav     # 抽機內收音；取樣率要與回放檔一樣
+/root/video-lab/.venv/bin/python - song.wav out/take.wav 8 1 <<'EOF'
+# 算 take 相對回放檔的位置，直接印出剪點表每列要填的 in
+import json, sys, numpy as np, soundfile as sf
+from scipy.signal import correlate
+ref_path, take_path, start_bar, k = sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4])
+ref, sr = sf.read(ref_path); ref = ref.mean(axis=1) if ref.ndim > 1 else ref   # 現場實際回放的檔（母帶或 k 倍速版）
+take, sr2 = sf.read(take_path); assert sr == sr2, '取樣率要一樣'
+au = json.load(open('data/audio.json')); db = au['downbeats']; beat = 60 / au['tempo']
+lead_max = 4.0                                                                  # 拍板前導最多幾秒
+hop = sr // 1000                                                                # 1 kHz 能量包絡
+env = lambda x: np.sqrt((x[:len(x) // hop * hop].reshape(-1, hop) ** 2).mean(axis=1))
+er, et = env(ref), env(take); er -= er.mean(); et -= et.mean()
+c = correlate(er, et, mode='full'); lags = (np.arange(len(c)) - (len(et) - 1)) * hop / sr
+expect = db[start_bar] / k                                                      # 起播小節在回放檔裡的秒數
+win = (lags > expect - lead_max) & (lags < expect + 1)                          # 只在起播小節附近找
+L = lags[win][np.argmax(c[win])]
+print(f'take 的 0 秒 = 回放檔 {L:.3f} 秒（起播小節在 take 的 {expect - L:.3f} 秒）')
+for bar, b in [(8, 1), (10, 1), (12, 3)]:                                      # 這支 take 要用在哪幾列
+    T = db[bar] + (b - 1) * beat
+    print(f'bar {bar} beat {b}: 歌曲 {T:.3f} 秒 → in = {T / k - L:.3f}')
+EOF
+```
+- 算出來的 `in` 直接填進 cuts.csv；慢動作列的 `speed` 填 1/k。交付前抽 3 個對嘴剪點，用 `ffmpeg -ss 秒 -i out/montage.mp4 -frames:v 1 x.png` 抽格看口型與人聲是否同一格
 
 ## 二、招式表
 
@@ -90,6 +133,12 @@ function render(t) { tl.render(ctx, t); }   // 頁面入口，render.py 逐格�
 window.CUTS = tl.cuts;                       // render.py --cuts 出剪點拼圖
 ```
 場景拿到的 `f` = `{t, lt, p, beat, bar, beatPhase, barPhase, W, H, a:{rms,low,mid,high,kick,snare,hat}}`；場景可回傳後製覆寫 `{shake:[x,y], flash, invert, zoom, fade, grain, vignette}`。下面的 `t0`、`tEnd` 都是用 `MV.timeOfBar()` 或 `cutBefore()` 算出來的絕對秒數。
+
+mv-kit 引數慣例（寫錯不一定報錯，先記住）：
+- 緩動可傳 `MV.ease.*` 函式或名稱字串（`'outCubic'`）：`MV.keys`／`MV.prog` 用 `easeOf()` 查表，兩種寫法結果相同（實測 `MV.prog(0.5,0,1,'outCubic')` = 0.875）。寫錯不會中止：名稱拼錯只 `console.warn` 一次就退回預設（`prog` 退 linear、`keys` 退 inOutCubic）；`MV.ease.outCubik` 這種拼錯的函式路徑是 `undefined`，連警告都沒有。render.py 只把 `console.error` 與 pageerror 印到 stderr，所以這兩種錯 stderr 一行都看不到、exit 0（實測），畫面只是「沒有緩動」。自檢：頁面載入時加 `for (const n of ['outCubic', 'outExpo']) if (!MV.ease[n]) throw new Error('沒有緩動 ' + n);`，拼錯就是 pageerror、render.py 以非 0 結束（實測 `[pageerror] 沒有緩動 outCubik`）
+- Canvas 字型用 fontconfig 全名 `Noto Sans CJK TC`／`Noto Serif CJK TC`；別名只有 `Noto Sans TC` 可用，`Noto Serif TC` 會落到後備字型（無襯線）而且不報錯，實測與 `NoSuchFont` 畫出的畫素完全相同（craft.md〈可用字型〉）
+- `MV.layout` 的 `tracking` 是每字額外間距的 px，不是 em：8% 字距寫 `size * 0.08`
+- `MV.drawGlyphs` 的顏色鍵是 `fill`／`stroke`（還有 `align`、`alpha`、`each`），沒有 `color`
 
 ### J cut／L cut
 - 何時用：J cut（聲音先進）用在新段落的第一個字、音效比畫面早到，觀眾「先聽到再看到」；L cut（畫面先走）用在人聲延音還在時已切到反應鏡頭。MV 的音樂連續不斷，所以 J／L cut 在 MV 裡是「元素先進」：下一場的標題、色塊、字在前一場的最後一拍就出現
@@ -111,16 +160,20 @@ const anchor = (f) => ({ x: f.W * 0.5, y: f.H * 0.42, r: 160 });
 function sceneA(ctx, f) { const a = anchor(f); drawMoon(ctx, a.x, a.y, a.r * (1 + 0.1 * f.p)); }
 function sceneB(ctx, f) { const a = anchor(f); drawClock(ctx, a.x, a.y, a.r * 1.1); }   // 接上 A 的尾
 ```
-- 實拍：沒有濾鏡能代勞，靠選 in-point；用配方 19 把 A 最後一格與 B 第一格並排看位置與明暗
+- 實拍：沒有濾鏡能代勞，靠選 in-point；用配方 18 把 A 最後一格與 B 第一格並排看位置與明暗
 
 ### 跳接 jump cut
 - 何時用：同一鏡頭去掉中間一段直接相接，表示時間跳躍、焦躁、重複；主歌的對嘴鏡頭每小節跳一次很常見
 - 程式動畫：同一場景、本地時間每小節跳一段：`drawTalk(ctx, f.lt + Math.floor(f.lt / barDur) * 1.5);`
-- 實拍：配方 16
+- 實拍：配方 15
 
 ### 速度斜坡 speed ramp
 - 何時用：正常速度衝向拍點、拍點後瞬間變慢（或相反），用在副歌進入、動作高點；斜坡的轉折點要在 downbeat
-- 程式動畫：把本地時間 warp 一次，場景照常畫：`drawRun(ctx, MV.keys(f.lt, [[0, 0, 'linear'], [2, 2, 'inCubic'], [3, 6, 'linear']]));`（2 秒後加速到 4 倍）
+- 程式動畫：把本地時間 warp 一次，場景照常畫（對應配方 3a）。緩動傳 `MV.ease.*` 函式或名稱字串，第 i 個關鍵格的緩動管「走向它」那一段，所以加速用的 `inCubic` 掛在 3 秒那格；`keys` 在最後一格之後保持端點值，要續播就再給一格
+```js
+const lt = MV.keys(f.lt, [[0, 0], [2, 2, MV.ease.linear], [3, 6, MV.ease.inCubic], [6, 18, MV.ease.linear]]);
+drawRun(ctx, lt);   // 0–2 秒 1 倍；2–3 秒 inCubic 加速，走完 4 秒份的素材；3 秒後 4 倍續播（實測 lt 2.5→2.5、3→6、4→10）
+```
 - 實拍：配方 3a（連續 setpts 表示式）、3b（分段 concat）、3c（慢動作補格）；音樂會取代原音軌，一律 `-an`
 
 ### 停格 freeze
@@ -130,7 +183,7 @@ function sceneB(ctx, f) { const a = anchor(f); drawClock(ctx, a.x, a.y, a.r * 1.
 
 ### 倒放 reverse
 - 何時用：回溯、乒乓來回（正放→倒放）填滿一個小節、動作「收回」接下一拍
-- 程式動畫：`const lt = f.lt < d ? f.lt : 2 * d - f.lt;`（乒乓，d = 來回一趟的一半）
+- 程式動畫：`const lt = f.lt < d ? f.lt : 2 * d - f.lt;`（乒乓，d = 來回一趟的一半；只在長度正好 2d 的 entry 內用，lt 超過 2d 會變負）。要重複來回用 `const u = f.lt % (2 * d); const lt = u < d ? u : 2 * d - u;`（實測 d = 1：lt 0.5／1.5／2.5 → 0.5／0.5／0.5，單趟版第三個是 −0.5）
 - 實拍：配方 5a（整段）、5b（乒乓）
 
 ### 三連 stutter
@@ -145,14 +198,14 @@ ctx.translate(f.W / 2, f.H / 2); ctx.scale(1 + 0.15 * k, 1 + 0.15 * k); ctx.tran
 - 實拍：配方 6a（loop）、6b（放回原片）、6c（每次放大）
 
 ### whip（甩鏡）
-- 何時用：兩個空間、兩個人之間的高速轉場，動作喜劇感（Edgar Wright）；方向要一致：A 往右甩出，B 也從右甩入
-- 程式動畫：`transition: 'whip', overlap: 0.2`；自己做：A 最後 0.2 秒 `ctx.translate(-f.W * MV.prog(f.t, tEnd - 0.2, tEnd, MV.ease.inQuad), 0)` 並回傳 `{shake: [6, 0]}`
+- 何時用：兩個空間、兩個人之間的高速轉場，動作喜劇感（Edgar Wright）；方向要一致：A 的畫面往左甩出，B 的畫面也從右往左甩入（同一個 pan 方向；mv-kit 的 `whip` 與配方 7 都是這個方向）
+- 程式動畫：`transition: 'whip', overlap: 0.2`；自己做：A 最後 0.2 秒 `ctx.translate(-f.W * MV.prog(f.t, tEnd - 0.2, tEnd, MV.ease.inQuad), 0)` 並回傳衰減的震動 `{shake: [6 * MV.pulse(f.t, tEnd - 0.2, 0.08) * Math.sin((f.t - tEnd + 0.2) * 80), 0]}`（craft.md：震動一定衰減；實測每 0.05 秒取一次 → 0、−2.9、2.5、−0.9、−0.3 px）
 - 實拍：配方 7（crop 位移＋tmix 動態模糊）
 
 ### 閃白 flash
-- 何時用：副歌第一個 downbeat、衝擊、回憶切入；2 格全白，或瞬白後 0.25 秒衰減；一分鐘不超過 4 次
+- 何時用：副歌第一個 downbeat、衝擊、回憶切入；規格引用 craft.md：全白最多 1 格、之後 2 格內衰減完（〈震動、閃爍、縮放、鏡頭〉）；次數上限一小節最多一次、一段落最多四次（〈標點符號原則〉）
 - 程式動畫：`transition: 'flash'`；拍點白閃回傳 `{flash: MV.pulse(f.t, t0, 0.08)}`，跟 kick 走回傳 `{flash: 0.8 * MV.hit('kick', f.t, 0.06)}`
-- 實拍：配方 8a（2 格全白）、8b（瞬白衰減）、8c（剪點處白閃接下一鏡）、13（依 audio.json 的 downbeat 自動產 enable）
+- 實拍：配方 8b（1 格全白後 0.1 秒衰減，首選）、8a（只有 1 格全白、不衰減）、8c（剪點處白閃接下一鏡）、13（依 audio.json 的 downbeat 自動產 1 格全白）
 
 ### 反轉 invert
 - 何時用：衝擊格的簡化版，1–3 格負片，放在 snare 或字落下的瞬間；黑白高反差版見 anime.md〈實拍 4〉
@@ -166,10 +219,10 @@ ctx.translate(f.W / 2, f.H / 2); ctx.scale(1 + 0.15 * k, 1 + 0.15 * k); ctx.tran
 const p = MV.prog(f.t, t0, t0 + beatDur, MV.ease.inOutCubic);
 ctx.save(); ctx.beginPath(); ctx.rect(0, 0, f.W * p, f.H); ctx.clip(); drawNext(ctx, f); ctx.restore();
 ```
-- 實拍：配方 2（xfade 內建：wipeleft、slideleft、circleopen、radial、smoothleft、pixelize、hblur、zoomin）、17（custom expr 斜向擦）
+- 實拍：配方 2（xfade 內建：wipeleft、slideleft、circleopen、radial、smoothleft、pixelize、hblur、zoomin）、16（custom expr 斜向擦）
 
 ### 縮放衝擊 zoom punch
-- 何時用：kick 上的 punch-in（放大 5–10% 指數回彈）、副歌進入的 25% 推進停住
+- 何時用：kick 上的 punch-in（放大 4–8% 指數回彈，上限見 craft.md）；副歌進入要「跳一級」用 reframing（硬切到 1.3 倍的構圖，配方 10e），那是剪點不是 punch-in
 - 程式動畫：`transition: 'zoom'`；拍點版回傳 `{zoom: 1 + 0.08 * MV.hit('kick', f.t, 0.1)}`
 - 實拍：配方 10b（單次）、13c（每個 kick）、10c（zoompan 緩推）
 
@@ -189,11 +242,12 @@ ctx.save(); ctx.translate(f.W / 2 * (2 - p), 0); ctx.beginPath(); ctx.rect(0, 0,
 ```js
 { id: 'card', start: t0, end: t0 + beatDur, render(ctx, f) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, f.W, f.H);
-    const lay = MV.layout(ctx, '第二章', { font: MV.font('Noto Serif TC', 160, 900), size: 160, tracking: 0.08 });
-    MV.drawGlyphs(ctx, lay, (f.W - lay.width) / 2, f.H / 2 + 60, { color: '#fff' });
+    const size = 160;   // 字型用 fontconfig 全名；tracking 是每字 px，8% 字距寫 size * 0.08；顏色鍵是 fill
+    const lay = MV.layout(ctx, '第二章', { font: MV.font('Noto Serif CJK TC', size, 900), size, tracking: size * 0.08 });
+    MV.drawGlyphs(ctx, lay, (f.W - lay.width) / 2, f.H / 2 + 60, { fill: '#fff' });
 } }
 ```
-- 實拍：配方 14（drawtext 黑卡 concat）、18（剪點前 3 格黑場）
+- 實拍：配方 14（drawtext 黑卡 concat）、14b（fontfile 版）、17（剪點前 3 格黑場）
 
 ## 三、實拍 ffmpeg 配方
 
@@ -236,20 +290,21 @@ ffmpeg -i a.mp4 -filter_complex "[0:v]trim=start_frame=60:end_frame=68,setpts=PT
 #   （tmix 直接加 enable 會少掉最後一格，所以用 split＋overlay）
 ffmpeg -i a.mp4 -i b.mp4 -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS,scale=iw*1.4:-2,crop=1280:720:x='(iw-1280)/2+(iw-1280)/2*if(gt(t,2.8),pow((t-2.8)/0.2,2),0)':y='(ih-720)/2'[va];[1:v]trim=0:3,setpts=PTS-STARTPTS,scale=iw*1.4:-2,crop=1280:720:x='(iw-1280)/2*if(lt(t,0.2),1-pow(1-t/0.2,2),1)':y='(ih-720)/2'[vb];[va][vb]concat=n=2:v=1:a=0,split[o][m];[m]tmix=frames=4[blur];[o][blur]overlay=enable='between(t,2.8,3.2)'[v]" -map "[v]" -an -c:v libx264 -crf 18 out/whip.mp4
 
-# 8a 閃白：2.0 秒起剛好 2 格全白
-ffmpeg -i a.mp4 -vf "drawbox=color=white@1:t=fill:enable='between(t,2,2.05)'" -c:v libx264 -crf 18 -c:a copy out/flash.mp4
-# 8b 瞬白後 0.25 秒退回畫面（fade in from white）
-ffmpeg -i a.mp4 -vf "fade=t=in:st=2:d=0.25:c=white" -c:v libx264 -crf 18 -c:a copy out/flash_decay.mp4
-# 8c 剪點處白閃接下一鏡：B 的開頭從白衰減進來
-ffmpeg -i a.mp4 -i b.mp4 -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS[v0];[1:v]trim=0:3,setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.2:c=white[v1];[v0][v1]concat=n=2:v=1:a=0[v]" -map "[v]" -an -c:v libx264 -crf 18 out/flash_cut.mp4
+# 8a 閃白：2.0 秒起剛好 1 格全白（craft.md 規格：全白最多 1 格；要 N 格寫 between(t,2,2+(N-0.5)/30)）
+ffmpeg -i a.mp4 -vf "drawbox=color=white@1:t=fill:enable='between(t,2,2.016)'" -c:v libx264 -crf 18 -c:a copy out/flash.mp4
+# 8b 瞬白後衰減（首選）：2.0 秒那格全白，之後 0.1 秒（3 格）線性退回畫面；指數衰減版用 craft.md 的 eq eval=frame 配方
+#   fade=t=in 在 st 之前的每一格都會是純色（實測 0–2 秒全白），所以一定要加 enable='gte(t,st)' 只在閃白起點之後套
+ffmpeg -i a.mp4 -vf "fade=t=in:st=2:d=0.1:c=white:enable='gte(t,2)'" -c:v libx264 -crf 18 -c:a copy out/flash_decay.mp4
+# 8c 剪點處白閃接下一鏡：B 的第一格全白，0.1 秒內衰減進來
+ffmpeg -i a.mp4 -i b.mp4 -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS[v0];[1:v]trim=0:3,setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.1:c=white[v1];[v0][v1]concat=n=2:v=1:a=0[v]" -map "[v]" -an -c:v libx264 -crf 18 out/flash_cut.mp4
 
 # 9 反轉：2.0 秒起 3 格負片
 ffmpeg -i a.mp4 -vf "negate=enable='between(t,2,2.083)'" -c:v libx264 -crf 18 -c:a copy out/invert.mp4
 
 # 10a 緩推 ease 進 downbeat：0→2 秒 outCubic 放大到 1.2，2 秒正好停（scale 要 eval=frame 才吃 t）
 ffmpeg -i a.mp4 -vf "scale=w='iw*(1+0.2*(1-pow(1-min(t/2,1),3)))':h=-2:eval=frame,crop=1280:720" -c:v libx264 -crf 18 -c:a copy out/easein.mp4
-# 10b punch-in：2.0 秒瞬間 1.25 倍，指數回彈到 1.1 停住
-ffmpeg -i a.mp4 -vf "scale=w='iw*if(lt(t,2),1,1.1+0.15*exp(-(t-2)*10))':h=-2:eval=frame,crop=1280:720" -c:v libx264 -crf 18 -c:a copy out/punch.mp4
+# 10b punch-in：2.0 秒瞬間 1.08 倍，指數回彈到 1.03 停住（craft.md 上限 1.08；表示式 2.0／2.1／2.3 秒 = 1.080／1.048／1.033）
+ffmpeg -i a.mp4 -vf "scale=w='iw*if(lt(t,2),1,1.03+0.05*exp(-(t-2)*10))':h=-2:eval=frame,crop=1280:720" -c:v libx264 -crf 18 -c:a copy out/punch.mp4
 # 10c zoompan 版緩推：每格推一點，60 格內到 1.3 倍，中心不動
 ffmpeg -i a.mp4 -vf "zoompan=z='min(1+0.3*on/60,1.3)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1280x720:fps=30" -c:v libx264 -crf 18 -c:a copy out/zoompan.mp4
 # 10d roll：−3° 轉回 0°，2 秒正好停；先放大 1.1 遮掉旋轉露出的邊
@@ -269,8 +324,9 @@ ffmpeg -i a.mp4 -i b.mp4 -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS[v0];
 # 12b L cut：畫面 3 秒切到 B，A 的聲音延到 4 秒才淡出；B 的聲音用 adelay 推到 3 秒，amix 疊接（normalize=0 才不會壓低音量）
 ffmpeg -i a.mp4 -i b.mp4 -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS[v0];[1:v]trim=0:3,setpts=PTS-STARTPTS[v1];[v0][v1]concat=n=2:v=1:a=0[v];[0:a]atrim=0:4,asetpts=PTS-STARTPTS,afade=t=out:st=3.5:d=0.5[a0];[1:a]atrim=0:3,asetpts=PTS-STARTPTS,adelay=3000:all=1,afade=t=in:st=3:d=0.3[a1];[a0][a1]amix=inputs=2:duration=longest:normalize=0[a]" -map "[v]" -map "[a]" -c:v libx264 -crf 18 -c:a aac out/lcut.mp4
 
-# 13 依 audio.json 的拍點產 enable 表示式（Python 一行）：每個 downbeat 白閃 2 格
-EXPR=$(/root/video-lab/.venv/bin/python -c "import json;d=json.load(open('data/audio.json'));N=2;fps=30;print('+'.join(f'between(t,{b:.3f},{b+(N-0.5)/fps:.3f})' for b in d['downbeats']))")
+# 13 依 audio.json 的拍點產 enable 表示式（Python 一行）：每個 downbeat 白閃 1 格（N 可改，但 craft.md 規定全白最多 1 格）
+#    時間是歌曲秒：套在 cutlist.py 的 montage 上要先減 offset（第四節步驟 4）；真片只挑幾個 downbeat（標點符號原則），這裡 3 個全閃是為了測試
+EXPR=$(/root/video-lab/.venv/bin/python -c "import json;d=json.load(open('data/audio.json'));N=1;fps=30;print('+'.join(f'between(t,{b:.3f},{b+(N-0.5)/fps:.3f})' for b in d['downbeats']))")
 ffmpeg -i a.mp4 -vf "drawbox=color=white@1:t=fill:enable='$EXPR'" -c:v libx264 -crf 18 -c:a copy out/flash_downbeats.mp4
 # 13b 同一招：每個 snare 負片 1 格
 EXPR=$(/root/video-lab/.venv/bin/python -c "import json;d=json.load(open('data/audio.json'));N=1;fps=30;print('+'.join(f'between(t,{b:.3f},{b+(N-0.5)/fps:.3f})' for b in d['onsets']['snare']))")
@@ -279,19 +335,21 @@ ffmpeg -i a.mp4 -vf "negate=enable='$EXPR'" -c:v libx264 -crf 18 -c:a copy out/i
 EXPR=$(/root/video-lab/.venv/bin/python -c "import json;d=json.load(open('data/audio.json'));print('+'.join(f'gte(t,{b:.3f})*exp(-(t-{b:.3f})*12)' for b in d['onsets']['kick']))")
 ffmpeg -i a.mp4 -vf "scale=w='iw*(1+0.08*($EXPR))':h=-2:eval=frame,crop=1280:720" -c:v libx264 -crf 18 -c:a copy out/kick_punch.mp4
 
-# 14 文字作為轉場：A → 黑底字卡 0.4 秒 → B（字型用 fontconfig 名稱；要指定檔案改 fontfile=/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc）
+# 14 文字作為轉場：A → 黑底字卡 0.4 秒 → B（字型用 fontconfig 全名，見 craft.md〈可用字型〉）
 ffmpeg -i a.mp4 -i b.mp4 -f lavfi -i "color=black:s=1280x720:r=30:d=0.4" -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS[v0];[2:v]drawtext=font='Noto Serif CJK TC':fontsize=120:fontcolor=white:text='第二章':x=(w-tw)/2:y=(h-th)/2[card];[1:v]trim=0:3,setpts=PTS-STARTPTS[v1];[v0][card][v1]concat=n=3:v=1:a=0[v]" -map "[v]" -an -c:v libx264 -crf 18 out/textcard.mp4
+# 14b 字卡本身、指定字型檔（不經 fontconfig）：fontfile 用絕對路徑；粗體在 NotoSerifCJK-Bold.ttc／NotoSansCJK-Bold.ttc
+ffmpeg -f lavfi -i "color=black:s=1280x720:r=30:d=0.4" -vf "drawtext=fontfile=/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc:fontsize=120:fontcolor=white:text='第二章':x=(w-tw)/2:y=(h-th)/2" -c:v libx264 -crf 18 out/textcard_file.mp4
 
-# 16 跳接：同一鏡 0–1.5 秒與 3–4.5 秒直接相接
+# 15 跳接：同一鏡 0–1.5 秒與 3–4.5 秒直接相接
 ffmpeg -i a.mp4 -filter_complex "[0:v]trim=0:1.5,setpts=PTS-STARTPTS[v0];[0:v]trim=3:4.5,setpts=PTS-STARTPTS[v1];[v0][v1]concat=n=2:v=1:a=0[v];[0:a]atrim=0:1.5,asetpts=PTS-STARTPTS[a0];[0:a]atrim=3:4.5,asetpts=PTS-STARTPTS[a1];[a0][a1]concat=n=2:v=0:a=1[a]" -map "[v]" -map "[a]" -c:v libx264 -crf 18 -c:a aac out/jumpcut.mp4
 
-# 17 自訂遮罩擦：xfade custom expr，P 是進度 0→1，A／B 是兩邊畫素；這條是斜向擦
+# 16 自訂遮罩擦：xfade custom expr，P 是進度 0→1，A／B 是兩邊畫素；這條是斜向擦
 ffmpeg -i a.mp4 -i b.mp4 -filter_complex "[0:v][1:v]xfade=transition=custom:duration=0.3:offset=5.7:expr='if(lt((X+Y)/(W+H),P),B,A)'[v]" -map "[v]" -an -c:v libx264 -crf 18 out/diagwipe.mp4
 
-# 18 剪點前「吸氣」：A → 3 格黑 → B
+# 17 剪點前「吸氣」：A → 3 格黑 → B
 ffmpeg -i a.mp4 -i b.mp4 -f lavfi -i "color=black:s=1280x720:r=30:d=0.1" -filter_complex "[0:v]trim=0:3,setpts=PTS-STARTPTS[v0];[1:v]trim=0:3,setpts=PTS-STARTPTS[v1];[v0][2:v][v1]concat=n=3:v=1:a=0[v]" -map "[v]" -an -c:v libx264 -crf 18 out/blackgap.mp4
 
-# 19 match cut 對位檢查：A 最後一格與 B 第一格並排；再用 signalstats 看兩格平均亮度（YAVG）是否刻意對比或連續
+# 18 match cut 對位檢查：A 最後一格與 B 第一格並排；再用 signalstats 看兩格平均亮度（YAVG）是否刻意對比或連續
 ffmpeg -sseof -0.034 -i a.mp4 -frames:v 1 out/a_last.png
 ffmpeg -i b.mp4 -frames:v 1 out/b_first.png
 ffmpeg -i out/a_last.png -i out/b_first.png -filter_complex "[0][1]hstack" out/matchcheck.png
@@ -300,38 +358,50 @@ ffmpeg -i out/a_last.png -vf "signalstats,metadata=print:key=lavfi.signalstats.Y
 
 ## 四、剪點表工作流程
 
-1. `python scripts/analyze.py song.mp3 -o data/audio.json --sections "intro:0,verse1:4,chorus1:12"`：拿到 tempo、beats、downbeats、段落表；對照段落摘要表確認小節序沒偏（第一個 downbeat 抓錯整張表就錯）
+1. `python scripts/analyze.py song.mp3 -o data/audio.json --bpm 120 --first-beat 0.5 --sections "intro:0,verse1:4,chorus1:12"`（數字換成自己這首歌的）：拿到 tempo、beats、downbeats、段落表；對照段落摘要表確認小節序沒偏（第一個 downbeat 抓錯整張表就錯）。tempo 已知時給 `--bpm` 與 `--first-beat` 最穩；目前不給 `--bpm` 時 16 小節測試歌會在 `pick_downbeat_phase` 崩潰（實測 ValueError，scripts 任務待修）
 2. 複製 `templates/cuts.csv`，依密度表填剪點。欄位：
    - `bar`：小節序，從 0 起（bar 0 = audio.json 的第一個 downbeat）
-   - `beat`：該小節第幾拍，1–4（`meter` 為 4 時）；段落邊界一律 1，子剪可以落在 2、3、4
+   - `beat`：該小節第幾拍，1–4（`meter` 為 4 時），可填 2.5 這種半拍（八分音符子剪、拍間反拍切）；段落邊界一律 1，子剪可以落在 2、3、4 或半拍
    - `src`：素材路徑，建議相對路徑（`media/a.mp4`），在 repo 根目錄執行 cutlist.py
    - `in`：從 src 的第幾秒開始播（秒，小數）；這列會從該拍的時間播到下一列為止，最後一列播到下一個 downbeat
+   - `in` 超過素材最後一格（in > 長度 − 1/fps）時 cutlist.py 會在轉檔前報錯並指出第幾行、不出檔（實測「剪點表有錯，未轉檔：第 3 行（列 2）：in 7.000 超過 b.mp4 的最後一格 5.967 秒」）；`in` 在範圍內但 `in + 該列長度 × speed` 超過素材長度時，用最後一格停格（tpad）補足並印警告（實測「不足的 30 格用最後一格停格補足」，總格數仍正確）。停格看得出來，只是保底：每支素材仍要比剪點表需要的長；範本的 `in` 值已配合第三節的 6 秒測試素材（120 BPM）
+   - 對嘴鏡頭的 `in` 用一.10 的交叉相關算出來，不手填
+   - 同一來源、`in` 接續上一列的子剪（範本 bar 5:3、9、11）畫面不會換，只是把剪點登記進 cuts.json；reframing／punch-in 本身用配方 10e／10b 在步驟 4 後製
    - `speed`：播放速度，預設 1；只為設計用（刻意慢動作 0.5、快轉 2），不是對拍工具
-   - `label`：備註，自由文字，不要含逗號；寫段落名與鏡頭意圖，qa 報告會帶出來
+   - `label`：備註，自由文字，不要含逗號；寫段落名與鏡頭意圖，cutlist.py 的剪點表與 `OUT.cuts.png` 會帶出來；qa.py 不讀 label
    - 第一列上方不要加註解，cutlist.py 直接讀表頭
-3. **先把剪點表給我確認**，再 `python scripts/cutlist.py cuts.csv --audio-json data/audio.json -o out/montage.mp4 --music song.mp3 --sheet`：它會先印出絕對秒數、長度、來源的剪點表，再精準到格重編碼
-4. `python scripts/qa.py out/montage.mp4 --audio-json data/audio.json -o out/qa`：看 `report.md` 的剪點誤差（±1 格內比例）、黑場與閃白次數，和每段落在 downbeat 抽格的 `sheet_<section>.png`；拼圖逐張看，找最弱的三處改 in-point 再跑一次
-5. 選 in-point 的原則（每列的 `in` 怎麼挑）：
+3. **先把剪點表給我確認**，再 `python scripts/cutlist.py cuts.csv --audio-json data/audio.json -o out/montage.mp4 --music song.mp3 --sheet`：它會先印出絕對秒數、長度、來源的剪點表，再精準到格重編碼；同時寫出 `out/montage.cuts.json`（影片 0 秒對歌曲的 offset、各列絕對秒）
+4. 拍點效果後製（白閃、負片、kick punch 套到 montage 上）：`out/montage.mp4` 的 0 秒 = 第一列的歌曲秒，就是 `out/montage.cuts.json` 的 `offset`；audio.json 裡全是歌曲秒，所以配方 13 系列的時間一律先減 offset、丟掉負的（範本第一列在 bar 0，offset = 第一個 downbeat，測試歌是 0.5 秒 = 一拍；不減就整支片閃在第 2 拍）。cuts.csv 沒有效果欄、cutlist.py 不做效果，label 的「配方 13 後製」只是提醒。只閃挑出來的小節（標點符號原則），不要每個 downbeat：
+```bash
+OFF=$(/root/video-lab/.venv/bin/python -c "import json;print(json.load(open('out/montage.cuts.json'))['offset'])")
+EXPR=$(/root/video-lab/.venv/bin/python -c "import json;d=json.load(open('data/audio.json'));off=$OFF;bars=[12];N=1;fps=30;print('+'.join(f'between(t,{b-off:.3f},{b-off+(N-0.5)/fps:.3f})' for i,b in enumerate(d['downbeats']) if i in bars and b>=off))")
+ffmpeg -i out/montage.mp4 -vf "drawbox=color=white@1:t=fill:enable='$EXPR'" -c:v libx264 -crf 18 -c:a copy out/montage_fx.mp4
+```
+   負片（配方 13b）與 kick punch（13c）同樣把 `b` 換成 `b-off`、加 `if b>=off`；實測見文末表
+5. `python scripts/qa.py out/montage_fx.mp4 --audio-json data/audio.json -o out/qa --cuts out/montage.cuts.json`：一定帶 `--cuts`，不帶時 qa.py 只靠 `scene` 偵測，同一來源的子剪（reframing、punch-in）幾乎抓不到，±1 格比例就只對抓到的剪點算。看 `report.md` 的預期剪點命中數、剪點誤差（±1 格內比例）、黑場與閃白次數，和每段落在 downbeat 抽格的 `sheet_<section>.png`；拼圖逐張看，找最弱的三處改 in-point 再跑一次
+6. 選 in-point 的原則（每列的 `in` 怎麼挑；對嘴鏡頭的 `in` 由一.10 算出，不在此列）：
    - 動作接動作：in-point 落在動作中途（抬手到一半、轉身到一半），不要在靜止點
    - 視線方向：上一鏡人物看右，下一鏡的主體在右；相反就是刻意的衝突，要有理由
-   - 明暗交替：亮鏡接暗鏡、暗接亮，拍點會更明顯；連續三個同明度的鏡頭會糊成一片（配方 19 的 YAVG 可以量）
+   - 明暗交替：亮鏡接暗鏡、暗接亮，拍點會更明顯；連續三個同明度的鏡頭會糊成一片（配方 18 的 YAVG 可以量）
    - 主體位置連續：主體在前一鏡結束的位置附近出現（或正好對角，做對比）；眼睛不用重新搜尋
    - 剪點前後各留 2 格以上的穩定畫面，不要剪在模糊格、閉眼格、過曝格上
 
 ## 五、剪輯自檢清單（交付前逐題回答）
 
-1. 每個剪點都在 downbeat 或字前最後一拍？qa.py 報告 ±1 格內比例 ≥ 90%？
+1. 每個剪點都在 downbeat 或字前最後一拍？qa.py（帶 `--cuts`）報告預期剪點全部命中、±1 格內比例 ≥ 90%？
 2. 密度曲線跟能量曲線一致？最後一次副歌比第一次密？橋段真的放慢了？
-3. 標點符號（白閃、停格、反轉、衝擊格）一分鐘 ≤ 4 個，而且都在最重的拍？
+3. 標點符號（白閃、停格、反轉、衝擊格）一小節 ≤ 1 次、一段落 ≤ 4 次（craft.md〈標點符號原則〉），而且都在最重的拍？
 4. 有沒有為了湊拍改原片速度？有就換素材或換 in-point
 5. 每個 in-point 檢查過動作、視線、明暗、主體位置四項？
 6. 鏡頭運動結束在拍上（不是開始在拍上）？
 7. 轉場語言一支片一套？硬切為主、溶接 ≤ 3 處？
 8. 關掉聲音看一次還看得出拍嗎？只聽聲音想像畫面，剪點落在你預期的地方嗎？
+9. 不在拍上的剪點 ≤ 3 處？每處 label 寫了理由，前後兩刀都在拍上？（一.9）
+10. 對嘴鏡頭的 `in` 全部用交叉相關算出來（一.10），不是手填？抽 3 個對嘴剪點看口型與人聲同一格？
 
 ## 出處
 
-- Walter Murch, *In the Blink of an Eye*（Silman-James Press）：Rule of Six，剪點優先序為情緒 51%、故事 23%、節奏 10%、視線 7%、畫面二維 5%、三維空間 4%；本文的「動作接動作」「視線方向」「主體位置連續」是第四到第六條的實作
+- Walter Murch, *In the Blink of an Eye*（Silman-James Press）：Rule of Six，剪點優先序為情緒 51%、故事 23%、節奏 10%、視線 7%、畫面二維 5%、三維空間 4%；一.9 的例外名額就是前三條的順序；「視線方向」「主體位置連續」是第四到第六條的實作，「動作接動作」是連戲剪接（continuity cutting）的基本法，不在六條之內
 - Tony Zhou, Every Frame a Painting《Edgar Wright – How to Do Visual Comedy》（2014）：whip pan、聲畫同步的喜劇剪法、用剪點取代鏡頭內的動作
 - Karen Pearlman, *Cutting Rhythms*（Focal Press）：剪輯節奏的脈動、緩急與速度
 - pdoom-video `app/src/timeline.ts`（剪點 = 字前最後一拍、段尾最近 downbeat）、`docs/TREATMENT.md` Tone 段（大變化落在拍上、運動 ease 進 downbeat、強緩動＋停＋snap）；anime-op `STORYBOARD.md`（密度曲線跟能量曲線）
@@ -344,6 +414,7 @@ ffmpeg -i out/a_last.png -vf "signalstats,metadata=print:key=lavfi.signalstats.Y
 - 素材：`ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30 -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 6 -pix_fmt yuv420p a.mp4`；b.mp4 用 `smptebars=size=1280x720:rate=30` 與 660 Hz；c.mp4 用 testsrc2 加 `-vf hue=h=120` 與 880 Hz。三支都是 h264 1280×720 30fps 180 格、aac 48 kHz 單聲道
 - 驗證方法：`ffprobe -show_entries stream=nb_frames,duration`；指定格的亮度用 `select='between(n,a,b)',scale=1:1` 加 `-fps_mode passthrough` 輸出 gray rawvideo（不加 passthrough 會補格，看不出真相）；音訊切換用 `astats` 的零交越率（440 Hz ≈ 0.018、660 Hz ≈ 0.028）
 - 測試用 audio.json：tempo 120、beats 每 0.5 秒、downbeats 0.5／2.5／4.5、snare 整數秒；lyrics.json 兩行，字起 2.56 與 4.48
+- 16 小節測試歌（第四節、一.10 用）：`testsong.py -o song.wav --bpm 120 --bars 16`，`analyze.py song.wav -o data/audio.json --bpm 120 --first-beat 0.5 --sections "intro:0,verse1:4,chorus1:12"` → downbeats 0.5、2.5、…（不給 `--bpm` 時在 `pick_downbeat_phase` 崩潰：ValueError could not broadcast (66,) into (67,)）；對嘴 take 合成法：1.5 秒前導雜訊 + 回放檔從起播小節（bar 8）起的一段 ×0.6 加雜訊，與 testsrc2 合成 mp4
 
 | 配方 | 檢查 | 結果 |
 |---|---|---|
@@ -356,19 +427,25 @@ ffmpeg -i out/a_last.png -vf "signalstats,metadata=print:key=lavfi.signalstats.Y
 | 5a、5b | 180 格；30+30 格 | 180 格；60 格 |
 | 6a、6b、6c | 24 格；180+16 格；24 格 | 24；196；24 |
 | 7 | 180 格、抽格看到拖影 | 180 格；tmix 直接加 enable 得 179 格（掉最後一格），改 split＋overlay 後 180 |
-| 8a | 第 60、61 格白，62 恢復 | 131 255 255 131；`between(t,2,2.066)` 會多一格（含兩端），改 2.05 |
-| 8b、8c | 跑通、格數 | 180；180 |
+| 8a | 第 60 格白，59、61 不白 | 131 255 131 131；`between(t,2,2.033)` 會多一格（含兩端），改 2.016 |
+| 8b | 第 0–3 格不變、第 60 格白、之後 3 格內退回 | 130 130 130 130；58–64 格 130 130 255 229 179 130 130（60 全白、61–62 衰減、63 回到畫面）；沒加 enable 時 0–59 格全是 255 |
+| 8c | 第 90 格（B 第一格）白後衰減、180 格 | 180；90 格起 255 → 衰減 |
 | 9 | 第 60–62 格負片 | 131 135 135 135 131（三格變了） |
-| 10a–10e | 輸出仍是 1280×720、180 格 | 五條都是 1280×720、180 格；10b 抽格看到瞬間放大再回彈 |
+| 10a–10e | 輸出仍是 1280×720、180 格 | 五條都是 1280×720、180 格；10b 改成 1.08 → 1.03 後重跑仍 1280×720、180 格 |
 | 11a、11b、11c | 1280×720、180 格；抽格看四宮格 | 三條都是；11b 四格正確 |
 | 12a | 1.9 秒 440 Hz、2.1 秒 660 Hz | 零交越率 0.0183 → 0.0275，聲音比畫面早 1 秒進 |
 | 12b | 2.5 秒 440、3.2 秒混合、4.5 秒 660 | 0.0183 → 0.0271 → 0.0275 |
-| 13 | 第 15、16 格白、17 不白；75、76；135、136 | 131 255 255 131 … 全對；原本 `b+2/30` 多一格，改 `(N-0.5)/fps` |
+| 13 | 第 15、75、135 格各 1 格白，前後不白 | 131 255 131 … 全對；原本 `b+N/fps` 多一格，改 `(N-0.5)/fps` |
 | 13b | 第 30、60 格各一格負片 | 131 134 131 131 131 135 131 131 |
 | 13c | 跑通、1280×720、180 格 | 是 |
-| 14、14b | 90+12+90 格；fontfile 版 12 格；抽格看到「第二章」白字 | 192；12；字正確 |
-| 16 | 45+45 格 | 90 格、3.000 秒 |
-| 17 | 12−0.3 秒；抽格看到斜向分界 | 351 格、11.700 秒；分界正確 |
-| 18 | 90+3+90 格 | 183 格、6.100 秒 |
-| 19 | 並排圖、YAVG | 產出 matchcheck.png；YAVG 125.5 與 95.8 |
-| 20 | cut 夜色 = 2.5、cut 我們 = 4.5（4.48+0.02 在容許內）、after 夜色 = 4.5 | 全對 |
+| 14、14b | 90+12+90 格；fontfile 版 12 格；抽格看到「第二章」明朝體白字 | 192；12；字正確 |
+| 15 | 45+45 格 | 90 格、3.000 秒 |
+| 16 | 12−0.3 秒；抽格看到斜向分界 | 351 格、11.700 秒；分界正確 |
+| 17 | 90+3+90 格 | 183 格、6.100 秒 |
+| 18 | 並排圖、YAVG | 產出 matchcheck.png；YAVG 125.5 與 95.8 |
+| 一.1 Python | cut 夜色 = 2.5、cut 我們 = 4.5（4.48+0.02 在容許內）、after 夜色 = 4.5 | 全對 |
+| 一.10 對嘴 | k = 1 真值 L 15.000（bar 8 → in 1.500、bar 12:3 → 10.500）；k = 2（`atempo=2.0` 的回放檔）真值 6.750（bar 10 → 3.500、bar 12:3 → 6.000） | 兩種都 0 ms 誤差，每列 in 與真值一致 |
+| 二 緩動引數 | playwright 載 mv-kit.js；render.py `--sheet` 跑含 `'nope'` 與 `MV.ease.outCubik` 的頁面；載入自檢版 | `'outCubic'` 與函式版都 0.875，`'nope'` 0.5 加一次 console.warn；render.py exit 0、stderr 空；自檢版 exit 1、`[pageerror] 沒有緩動 outCubik` |
+| 二 乒乓、whip shake | d = 1 兩種寫法 lt 0.5／1.5／2.5；shake 表示式 9.80–10.00 秒每 0.05 秒取 | 0.5／0.5／0.5 與 0.5／0.5／−0.5；0、−2.94、2.50、−0.88、−0.31 |
+| 四.2 in 檢查 | in 7.0（素材 6 秒）要報錯不出檔；in 5.0 需要播到 7 秒要停格補足 | 「剪點表有錯，未轉檔：第 3 行（列 2）：in 7.000 超過 b.mp4 的最後一格 5.967 秒」exit 1、無輸出；「不足的 30 格用最後一格停格補足」、180 格 |
+| 四.4 offset | 範本 cuts.csv（12 列）+ 16 小節測試歌：offset 0.5、bars=[12] → 歌曲 24.5 秒 = 影片 24.0 秒 = 第 720 格 | 840 格；第 718–722 格灰階 131 131 255 93 93（只有 720 白）、第 0–2 格 131（bar 0 不在 bars 內）；不減 offset 的對照組白在第 735 格 = 晚一拍；qa.py 報「閃白 1 次：24.00s（1 格）」、report.md 不含 label |

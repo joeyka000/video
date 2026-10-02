@@ -4,6 +4,8 @@
   python align.py song.mp3 lyrics.txt -o data/lyrics.json                       # 用 faster-whisper（large-v3、zh）辨識
   python align.py song.mp3 lyrics.txt -o data/lyrics.json --from-json words.json  # 吃現成的字級時間碼，不載模型
   python align.py song.mp3 lyrics.txt -o data/lyrics.json --model medium --no-opencc
+  python align.py song.mp3 lyrics.txt -o data/lyrics.json --language en            # 英文歌（預設 zh；ja 日文）
+  python align.py song.mp3 lyrics.txt -o data/lyrics.json --from-json w.json --min-match 0.2   # 放寬對到比例門檻
 
 lyrics.txt：一行一句（空行略過）。中文一個字一個 word，英文一個單字一個 word；標點不算 word 但保留在 text。
 words.json（--from-json）：faster-whisper 的字級時間碼，接受兩種格式：
@@ -13,9 +15,12 @@ words.json（--from-json）：faster-whisper 的字級時間碼，接受兩種�
 做法：
   1. 辨識結果（簡體先用 OpenCC s2twp 轉繁；--no-opencc 可關）拆成「字元序列」：中日韓一字一個、英文一個單字一個
   2. 與 lyrics.txt 全部行的字元序列用 difflib.SequenceMatcher 對齊；對到的字取辨識時間；
-     辨識錯字（replace 區塊，例如同音字）按位置取對應辨識字的時間
+     辨識錯字（replace 區塊，例如同音字）按位置取對應辨識字的時間，但兩邊長度差 3 倍以上的 replace 區塊
+     視為對不上（例如整段辨識成別的話），不取時間、改插值
   3. 其餘沒對到的字（漏字）在相鄰已知時間之間線性插值；開頭／結尾沒有已知時間就用中位字長外推
   4. 每行 start／end 取首尾字；全部時間強制單調遞增
+  5. 對到（字相同）的比例低於 --min-match（預設 0.4）就中止、不寫檔：通常是歌放錯、歌詞檔不對或 --language 錯；
+     每行印的 [n/m] 是「字相同的數量／該行字數」，錯字取時間與插值的不算
 
 沒有 --from-json 時需要 faster_whisper 與可下載的模型；下載不了（例如這個環境擋 huggingface.co）會印出提示：
 改在本機跑 faster-whisper 輸出 words.json，再用 --from-json。
@@ -65,7 +70,7 @@ def load_words_json(path):
     return words
 
 
-def transcribe(song, model_name):
+def transcribe(song, model_name, language):
     try:
         from faster_whisper import WhisperModel
     except ImportError:
@@ -77,7 +82,7 @@ def transcribe(song, model_name):
                  "這個環境可能連不上 huggingface.co 下載模型。請在本機跑 faster-whisper（word_timestamps=True）"
                  "把字級時間碼存成 words.json，再用 --from-json words.json 跑 align.py。")
     try:
-        segments, _ = model.transcribe(song, language="zh", word_timestamps=True, beam_size=5)
+        segments, _ = model.transcribe(song, language=language, word_timestamps=True, beam_size=5)
         words = [{"w": w.word, "start": float(w.start), "end": float(w.end)}
                  for seg in segments for w in (seg.words or [])]
     except Exception as e:
@@ -105,7 +110,8 @@ def split_recognized(words, convert):
 
 def align(rec, lines_tokens):
     """回傳 (flat, times, kind)：flat 是 (行序, 字)，times 是 (start, end) 或 None，
-    kind 是 'match'（字相同）、'replace'（辨識錯字，按位置取時間）或 None（要插值）。"""
+    kind 是 'match'（字相同）、'replace'（辨識錯字，按位置取時間）或 None（要插值）。
+    replace 區塊兩邊長度差 3 倍以上（例如 4 個辨識字對 23 個歌詞字）代表根本對不上，不取時間。"""
     flat = [(li, tok) for li, toks in enumerate(lines_tokens) for tok in toks]
     rec_keys = [key(r["w"]) for r in rec]
     lyr_keys = [key(tok) for _, tok in flat]
@@ -118,8 +124,10 @@ def align(rec, lines_tokens):
                 times[j1 + k] = (rec[i1 + k]["start"], rec[i1 + k]["end"])
                 kind[j1 + k] = "match"
         elif tag == "replace":
-            # 錯字：歌詞第 j 個字按比例對到辨識的第 i 個字
+            # 錯字：歌詞第 j 個字按比例對到辨識的第 i 個字；長度懸殊的區塊不是錯字，是對不上
             nr, nl = i2 - i1, j2 - j1
+            if max(nr, nl) > 3 * min(nr, nl):
+                continue
             for k in range(nl):
                 i = i1 + min(nr - 1, int(k * nr / nl))
                 times[j1 + k] = (rec[i]["start"], rec[i]["end"])
@@ -175,7 +183,12 @@ def main():
     ap.add_argument("--model", default="large-v3", help="faster-whisper 模型名（預設 large-v3）")
     ap.add_argument("--from-json", dest="from_json", help="現成的字級時間碼 JSON，給了就不載模型")
     ap.add_argument("--no-opencc", dest="no_opencc", action="store_true", help="不做簡轉繁")
+    ap.add_argument("--language", default="zh", help="Whisper 辨識語言代號（預設 zh；en、ja…）")
+    ap.add_argument("--min-match", dest="min_match", type=float, default=0.4,
+                    help="對到比例門檻 0–1（預設 0.4），低於就中止；0 = 不檢查")
     a = ap.parse_args()
+    if not (0 <= a.min_match <= 1):
+        ap.error("--min-match 要在 0 到 1 之間")
 
     if not os.path.exists(a.lyrics):
         sys.exit(f"找不到歌詞檔：{a.lyrics}")
@@ -201,8 +214,8 @@ def main():
     else:
         if not os.path.exists(a.song):
             sys.exit(f"找不到歌曲檔：{a.song}")
-        words = transcribe(a.song, a.model)
-        src = f"faster-whisper {a.model}"
+        words = transcribe(a.song, a.model, a.language)
+        src = f"faster-whisper {a.model}（{a.language}）"
     rec = split_recognized(words, convert)
     if not rec:
         sys.exit("辨識結果拆不出任何字")
@@ -214,6 +227,11 @@ def main():
     flat, times, kind = align(rec, lines_tokens)
     matched = kind.count("match")
     replaced = kind.count("replace")
+    ratio = matched / len(flat)
+    if ratio < a.min_match:
+        sys.exit(f"辨識 {len(rec)} 字、歌詞 {len(flat)} 字，只有 {matched} 字相同（{ratio * 100:.0f}%，門檻 {a.min_match * 100:.0f}%），"
+                 f"未寫檔。請檢查：歌曲與歌詞檔是否同一首、--language 是否正確、辨識結果是否為空；"
+                 f"確定要用請加 --min-match 0")
     filled = fill(times)
     if filled is None:
         sys.exit("歌詞與辨識結果沒有任何一個字對得上，請檢查歌詞檔或辨識語言")
@@ -225,7 +243,7 @@ def main():
         n_match = 0
         for tok in toks:
             s, e = filled[idx]
-            n_match += times[idx] is not None
+            n_match += kind[idx] == "match"
             ws.append({"w": tok, "start": round(s, 3), "end": round(e, 3)})
             idx += 1
         out_lines.append({"text": ln, "start": ws[0]["start"], "end": ws[-1]["end"], "words": ws})
