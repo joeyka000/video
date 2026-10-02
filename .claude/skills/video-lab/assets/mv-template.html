@@ -21,8 +21,9 @@ mv-template.html — 一支 MV 的骨架與示範（Canvas 2D，1920×1080，畫
 2. 改檔頭的色票 C、曲名 SONG；段落邊界 BAR 用小節序（看 analyze.py 印的段落表），不寫死秒數
    歌詞行用內容找（lineOr → MV.line('內容')），不寫死時間；verse 依時間自動輪流各行，chorus 的查詢字串換成新歌的字即可
 3. 換歌後先出一次 --sheet 看 stderr：render.py 只轉印 console.error 與 pageerror（console.warn 看不到）。本頁與 mv-kit.js 的
-   「副歌查詢字串找不到、改用第 N 行」「緩動名稱不認得」都用 console.error 印一次；audio.json／lyrics.json 形狀不對
-   （陣列、沒有 beats／tempo、沒有 lines）MV.setData 直接丟錯，render.py 以非 0 結束——不會靜默退回 120 BPM 等拍格做出一支拍點全錯的片
+   「副歌查詢字串找不到、改用第 N 行」「lyrics 沒載入」「緩動名稱不認得」「轉場名稱不認得（退回 cut）」都用 console.error 印一次；
+   audio.json／lyrics.json 形狀不對（陣列、沒有 beats／tempo、沒有 lines）MV.setData 直接丟錯、MV.setGrid 的 bpm／duration 不是正數也丟錯，
+   render.py 以非 0 結束——不會靜默退回 120 BPM 等拍格做出一支拍點全錯的片
 
 怎麼預覽（瀏覽器）
    在專案目錄：python3 -m http.server 8000 → 開 http://localhost:8000/mv-template.html

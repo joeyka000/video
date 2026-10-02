@@ -35,3 +35,6 @@ projects/*/*
 !projects/*/music/
 projects/*/music/*
 !projects/*/music/analysis.json
+
+# 分析資料（audio.json、含整首歌詞的 lyrics.json）不進公開 repo
+data/

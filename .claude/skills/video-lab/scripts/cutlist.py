@@ -23,7 +23,8 @@ cuts.csv 欄位：bar,beat,src,in,speed,label
   4. concat demuxer 串接（-c copy）；有 --music 時從第一列的時間起合音軌：apad 補靜音、-t 切齊影片長度；
      音樂比剪點表短時表格上方會印「音樂於 X 秒結束，之後無聲」
   5. 影片的 0 秒 = 第一列的時間；另寫 OUT.cuts.json（offset、fps、各列絕對秒）給 qa.py --cuts 用
-  6. --sheet：另出 OUT.cuts.png，每段第一格的拼圖，每格下方黑條標列序、小節／拍、秒數與標籤
+  6. --sheet：另出 OUT.cuts.png，每段第一格的拼圖，每格下方 52 px 黑條兩行：第一行列序、小節／拍、秒數，
+     第二行標籤（全形字算 2 單位、超過 42 單位截斷加「…」，不會被下一格蓋掉）
 """
 import argparse
 import csv
@@ -32,6 +33,7 @@ import os
 import shutil
 import subprocess
 import sys
+import unicodedata
 from fractions import Fraction
 
 
@@ -86,6 +88,20 @@ def audio_duration(path):
 def safe_label(s):
     """sendcmd／drawtext 的文字：會被當成語法的字元換成空白（% 是 drawtext 的展開起始符，含 % 整行標籤不畫）。"""
     return "".join(ch if ch not in "'\";:,\\[]%" else " " for ch in s)
+
+
+def fit_label(s, max_units=42):
+    """把標籤截到黑條放得下的寬度：全形（中日韓）字算 2 單位、其他 1 單位；fontsize 20 時 1 單位約 11 px，
+    480 px 寬的格子扣掉左邊 8 px 約放 42 單位。超過就截斷加「…」。"""
+    w = 0
+    out = []
+    for ch in s:
+        u = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if w + u > max_units - 2:
+            return "".join(out) + "…"
+        out.append(ch)
+        w += u
+    return s
 
 
 def font_arg():
@@ -262,14 +278,20 @@ def main():
     if a.sheet:
         sheet = os.path.splitext(out_abs)[0] + ".cuts.png"
         cmd_path = sheet + ".cmds.txt"
+        # 黑條兩行：drawtext@l1 放列序／小節／拍／秒，drawtext@l2 放標籤（截到格寬）；sendcmd 分別對這兩個 drawtext 下指令
         with open(cmd_path, "w", encoding="utf-8") as f:
             for i, r in enumerate(rows, 1):
-                lab = safe_label(f"{i} bar{r['bar']} beat{r['beat']:g} {r['t']:.3f}s {r['label']}")
-                f.write(f"{max(0.0, (r['f'] - 0.5) / fps):.4f} drawtext reinit 'text={lab}';\n")
+                at = f"{max(0.0, (r['f'] - 0.5) / fps):.4f}"
+                l1 = safe_label(fit_label(f"{i} bar{r['bar']} beat{r['beat']:g} {r['t']:.3f}s"))
+                l2 = safe_label(fit_label(r["label"]))
+                f.write(f"{at} drawtext@l1 reinit 'text={l1}';\n")
+                f.write(f"{at} drawtext@l2 reinit 'text={l2}';\n")
         sel = "+".join(f"eq(n\\,{r['f']})" for r in rows)
         cols = min(4, len(rows))
-        vf = (f"select='{sel}',sendcmd=f={cmd_path},scale=480:-2,pad=iw:ih+28:0:0:black,"
-              f"drawtext=text='':x=8:y=h-24:fontsize=20:fontcolor=white{font_arg()},"
+        font = font_arg()
+        vf = (f"select='{sel}',sendcmd=f={cmd_path},scale=480:-2,pad=iw:ih+52:0:0:black,"
+              f"drawtext@l1=text='':x=8:y=h-48:fontsize=20:fontcolor=white{font},"
+              f"drawtext@l2=text='':x=8:y=h-24:fontsize=20:fontcolor=0xdddddd{font},"
               f"tile={cols}x{(len(rows) + cols - 1) // cols}")
         run(["ffmpeg", "-v", "error", "-y", "-i", out_abs, "-vf", vf, "-frames:v", "1", sheet], "剪點拼圖")
         os.remove(cmd_path)

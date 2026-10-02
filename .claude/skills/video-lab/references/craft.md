@@ -35,7 +35,7 @@ ffmpeg -i in.mp4 -vf "fps=20/DUR,scale=8:8:flags=area,tile=20x1,scale=iw*8:ih*8:
 
 ### 發光規則
 - 只有強調色會發光（bloom／halation）；中性色文字永遠銳利，不加 `shadowBlur`、不疊模糊副本。pdoom 的做法：只有亮度超過 0.85（線性）的畫素進 bloom，而紙色文字壓在 0.85 以下
-- Canvas 2D 做「發光」的方式：同一形狀畫兩層，底層 `'screen'` 加 `ctx.filter = 'blur(Npx)'` 或預先模糊的貼圖，上層銳利。模糊半徑 = 形狀寬度的 0.5–1 倍，alpha 0.3–0.5。不要用 `shadowBlur` 當光暈（它每次繪製都重算，慢且不穩）
+- Canvas 2D 做「發光」的方式：同一形狀畫兩層，底層 `'screen'` 加 `ctx.filter = 'blur(Npx)'` 或預先模糊的貼圖，上層銳利。模糊半徑 = 形狀寬度的 0.5–1 倍，alpha 0.3–0.5。不要用 `shadowBlur` 當光暈（它每次繪製都重算，慢且不穩）。`ctx.filter` 是 context 狀態（實測 swiftshader 下 `'blur(8px)'` 有效，方塊外 4 px 讀得到光暈；設定後讀回仍是 `'blur(8px)'`，不會自己歸零），畫完要手動 `ctx.filter = 'none'`；它在 `save()`／`restore()` 的狀態內，用 `save()` 之後設、`restore()` 收回也行
 - 發光面積 ≤ 畫面 5%。整個畫面都在發光等於沒有東西在發光
 
 ### 膚色
@@ -156,12 +156,13 @@ ffmpeg -i in.mp4 -filter_complex "[0:v]curves=m='0/0 0.25/0.22 0.75/0.80 1/1',co
 
 ### 中英數混排
 - 中英之間留 0.25 em；半形空格實測 Noto Sans CJK TC 0.224 em、Serif 0.256 em（直接打空格略小於 0.25 em，可接受），等寬字型 0.5 em（太寬，不用空格隔中英）；要精準用 `letterSpacing` 或 `MV.layout` 的 `tracking` 補。數字與單位之間不留
-- 數字用 tabular（等寬數字）才不會在滾動時跳動：Noto Sans CJK TC 的數字實測已是等寬（0、1、8 都 0.555 em），Serif 0.55 em；等寬字型 0.5 em。不要用 `canvas.style.fontFeatureSettings` 控制（實測對 ctx 文字無效）
+- 數字用 tabular（等寬數字）才不會在滾動時跳動：已裝字型的數字本來就等寬（實測 Noto Sans CJK TC 的 0、1、8 都 0.555 em，Serif 0.55 em，等寬字型 0.5 em），靠選字型，不靠字型特性（`"tnum"`／`"pnum"` 對這些字型量不出差別，DejaVu／Liberation 也一樣）。Canvas 2D 沒有 `fontVariantNumeric`；有 `ctx.fontVariantCaps`（實測 DejaVu Sans `'small-caps'` 把 `Type` 從 110.3 px 縮到 92.1 px）
+- `font-feature-settings` 設在 `<canvas>` 元素上（inline style、`style` 屬性或 CSS class）**會**套到 ctx 文字，但有三個條件（實測 `"palt"`／`"halt"`：「測試」、 從 216 px 變 168 px，與 DOM 同值）：canvas 要掛在 document 裡（未掛進去量到 216 不變）、改完要重新指定一次 `ctx.font` 才生效（不重設仍是 216）、inline style 會蓋過 class（inline 寫 `normal` 時 class 的 `"palt"` 無效）。要用就在頁面載入時設一次、之後每次 `ctx.font =` 都會帶著；不要在 `render(t)` 裡切換
 - 大數字（計數器、年份、百分比）用等寬或 Serif 數字，不用中文字型的數字當主角；小數點後位數固定
 - 英文大寫標題字距 +0.05–0.1 em，小寫不要加
 
 ### 標點
-- 中文用全形標點（，。、：；「」『』）；全形標點實測佔 1 em，句尾標點在視覺上會留一個空字，標題可以把句尾標點拿掉或用 `letterSpacing` 負值收回（標點擠壓）
+- 中文用全形標點（，。、：；「」『』）；全形標點實測佔 1 em，句尾標點在視覺上會留一個空字，標題可以把句尾標點拿掉、用 `letterSpacing` 負值收回，或對 canvas 設 `font-feature-settings: "palt"` 做標點擠壓（條件見〈中英數混排〉）
 - 避頭尾：行首不能是 ，。、；：」』）；行尾不能是 「『（。自己斷行時先切字、再把違規標點推到上一行末或下一行首
 - 引號用「」，不用 “”；省略號用「……」（兩個全形）；破折號用「——」；英文裡用 ’ “ ” … – —，不用打字機引號 ' "
 - 歌詞不加句尾標點（除了問號與驚嘆號有語氣作用時）
@@ -172,7 +173,7 @@ ffmpeg -i in.mp4 -filter_complex "[0:v]curves=m='0/0 0.25/0.22 0.75/0.80 1/1',co
 - 直書一行 ≤ 12 字，行與行間距 1.5–2 em，從右往左排
 
 ### 安全區與平臺遮擋區
-- 通用：標題安全區 90%（`MV.safeArea(W,H,0.9)`），動作安全區 93%（`MV.safeArea(W,H,0.93)`）；字幕距邊 ≥ 5%。`mv-kit.js` 的 `safeArea` 註解寫「0.9 動作、0.8 字幕」，與本文不一致，以本文（廣播慣例：動作 93、標題 90）為準
+- 通用：標題安全區 90%（`MV.safeArea(W,H,0.9)`），動作安全區 93%（`MV.safeArea(W,H,0.93)`）；字幕距邊 ≥ 5%。`MV.safeArea` 只做幾何（pct 是邊長比例，回 `[x, y, w, h]`，不定義用途），用哪個 pct 以本文為準（廣播慣例：動作 93、標題 90）
 - 有 letterbox 時以有效畫面計算（實測）：`bar = (H − W / ratio) / 2`（1080p、2.39 → 138 px；720p → 92 px），安全區與字幕位置都以 `[0, bar, W, H − 2·bar]` 為外框，不是整張畫布。`MV.post` 的 `letterbox` 只畫黑邊、不改安全區，要自己算：
 ```js
 const RATIO = 2.39;                                                 // 與 MV.post 的 letterbox 同值；沒有 letterbox 時 bar = 0
@@ -205,12 +206,12 @@ ffmpeg -i in.mp4 -vf "crop=iw:iw/2.39,pad=1280:720:0:(oh-ih)/2:black,subtitles=s
 - 基線網格（baseline grid）：垂直方向以副標行距為一格（1080p 副標 48 px × 1.5 = 72 px），同一畫面所有文字的基線（baseline）都落在格線上，基線差是 72 的整數倍；主標行距照〈字距與行距〉，但第一行基線仍落在格上
 - 主體落點只選一種、全片一致：中心（對稱、正面、儀式感；主標與貫穿物置中）或三分交點（有方向、有留白；主體在交點、文字在對側的欄位）。一個段落只用一種，換段落才能換
 - 一個畫面一個重心：遮住強調色與主標後，畫面剩下的東西不能有第二個同等吸引視線的物件；兩個東西要並列時用對稱構圖，否則把次要的縮到主要的 1/1.6 以下或降到中性色第三階
-- 負空間（negative space）≥ 40%：單格裡主色（背景）面積至少四成（〈色票紀律〉的 60–70% 是全片平均，單格下限 40%）；字幕模式與全幅歌詞也不例外。量法（實測）：`neg_space.py` 把一格縮成 192×108、找出現最多的顏色、算與它相近的畫素佔比；影片路徑時只量第一格，要量某一秒先 `ffmpeg -ss 秒 -i in.mp4 -frames:v 1 f.png`
+- 負空間（negative space）≥ 40%：單格裡主色（背景）面積至少四成（〈色票紀律〉的 60–70% 是全片平均，單格下限 40%）；字幕模式與全幅歌詞也不例外。量法（實測）：`neg_space.py` 把一格縮成 192×108、找出現最多的顏色、算與它相近的畫素佔比；給影片路徑時只量第一格（`-frames:v 1`），要量某一秒先 `ffmpeg -ss 秒 -i in.mp4 -frames:v 1 f.png` 再給 PNG
 ```python
-# neg_space.py 檔案（PNG 或影片）：印負空間比例（與主色歐氏距離 ≤ 24 的畫素佔比）
+# neg_space.py 檔案（PNG 或影片；影片只量第一格）：印負空間比例（與主色歐氏距離 ≤ 24 的畫素佔比）
 import numpy as np, subprocess, sys
 p = sys.argv[1]
-r = subprocess.run(["ffmpeg", "-v", "error", "-i", p, "-vf", "scale=192:108:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
+r = subprocess.run(["ffmpeg", "-v", "error", "-i", p, "-frames:v", "1", "-vf", "scale=192:108:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
 a = np.frombuffer(r, np.uint8).reshape(-1, 3).astype(int)
 q = (a // 16) * 16 + 8                                        # 量化到 16 階再找眾數
 keys, counts = np.unique(q, axis=0, return_counts=True)
@@ -218,7 +219,7 @@ mode = keys[counts.argmax()]
 d = np.sqrt(((a - mode) ** 2).sum(axis=1))
 print(f"{p}: 主色 ≈ rgb{tuple(int(v) for v in mode)}，負空間 {(d <= 24).mean() * 100:.0f}%")
 ```
-  實測：本節示範頁（主標＋標註＋字幕）96%；testsrc2 色條 16%（沒有主色，不及格）
+  實測：本節示範頁（主標＋標註＋字幕）96%；testsrc2 色條 16%（沒有主色，不及格）；前 3 格黑、之後全白的測試片 → 主色黑、100%（證明只讀第一格）。`-frames:v 1` 不能省：少了它 rawvideo 會吐整支片（6 秒素材讀進 180 格），算出的是全片畫素混在一起的比例，而且 3 分鐘 1080p 的 int64 陣列要 2.7 GB 記憶體
 - 輔助線（除錯用，交付時關）：
   - Canvas：下面的 `drawGrid` 畫 12 欄（半透明強調色）、安全區外框、有效畫面三分線、中心十字。在 `render(t)` 最後、`MV.post` 之後呼叫；用 `render.py --data cfg=grid.json`（內容 `{"grid":1}`）開關，頁面以 `window.DATA.cfg` 讀，不改程式碼（實測；同一機制可切 halation，見三、〈動態模糊與取樣〉）
 ```js
@@ -251,7 +252,7 @@ ffmpeg -i in.mp4 -vf "drawbox=x=iw*0.05:y=ih*0.05:w=iw*0.9:h=ih*0.9:c=white@0.7:
 - 字級：9:16 用畫面寬度的 4.5–5.5%（1080 寬 → 48–60 px）；16:9 用高度的 4.5–5.5%（1080 高 → 48–60 px）；1080p 下 Noto Sans TC Bold
 - 位置：底部，距底 8–12%（9:16 要避開 25% 遮擋區 → 放在 y 65–72%）；有 letterbox 時距底以有效畫面高度計、從黑邊上緣算起（〈安全區與平臺遮擋區〉）；不壓人臉與主體，鏡頭構圖低時字幕往上移
 - 描邊：寬 = 字級 × 0.06–0.08（48 px → 3–4 px），黑 85% 透明度；陰影 y +2、模糊 0–4、黑 50%；底板（box）只在背景雜亂時用，黑 40–50%、內距 0.25 em。三者選一到兩個，不全開
-- Canvas 做法（實測）：先 `lineJoin='round'`、`lineWidth = 字級×0.12`（stroke 有一半在字內，所以是描邊寬的兩倍）`strokeText`，再 `fillText`；陰影用 `shadowBlur`，不與描邊同時用
+- Canvas 做法（實測）：先 `lineJoin='round'`、`lineWidth = 字級×0.12`（stroke 有一半在字內，所以是描邊寬的兩倍）`strokeText`，再 `fillText`；陰影用 `shadowBlur`，不與描邊同時用。用 `MV.drawGlyphs`／`MV.karaoke` 畫字幕時要傳 `lineWidth: size * 0.12`：kit 只給 `stroke` 不給 `lineWidth` 時預設 `size × 0.08`（實測 48 px 字 `strokeText` 時 `ctx.lineWidth` 3.84，可見描邊 1.9 px，低於 3–4 px 門檻；傳 `48 * 0.12` 得 5.76）
 - ffmpeg 做法（實測）：
 ```bash
 # drawtext：fontsize 可用運算式，borderw 是整數畫素（不能寫運算式）
@@ -319,7 +320,9 @@ ffmpeg -i in.mp4 -vf "trim=0:4.5,setpts=PTS-STARTPTS,tpad=start_mode=clone:start
 - 剪點（`MV.timeline` 的 `cuts`）全部在 downbeat 或拍上；偏差 ≤ 1 格（30 fps 下 33 ms），用 `qa.py` 核對
 
 ### 一拍二（12 fps）何時用
-- 手繪感、停格動畫感、刻意的「廉價」質感：整段用 `MV.frameIdx(t,12)` 把 t 量化，所有運動都會變成 12 fps（12 只在 24 fps 輸出時是每 2 格一換；30 fps 輸出改 15 或 10，見五、〈fps 選擇〉）
+- 手繪感、停格動畫感、刻意的「廉價」質感：整段用 `MV.frameIdx(t,q)` 把 t 量化，所有運動都會變成 q fps。q 要能整除輸出格率，否則停格長短不一（實測前 12 格的 `MV.frameIdx(i/fps, q)`；第一個停格因四捨五入比其他短，之後才規律）：
+  - 30 fps 輸出：`q=12` → `0 0 1 1 2 2 2 3 3 4 4 4`（2、2、3 格不等，不要用）；`q=15` → `0 1 1 2 2 3 3 4 4 5 5 6`（每 2 格）；`q=10` → `0 0 1 1 1 2 2 2 3 3 3 4`（每 3 格）
+  - 24 fps 輸出：`q=12` → `0 1 1 2 2 3 3 4 4 5 5 6`（每 2 格）；`q=8` → `0 0 1 1 1 2 2 2 3 3 3 4`（每 3 格）
 - 不用在：文字滾動、鏡頭運動、任何與實拍 30 fps 素材同框的東西（會像掉格）
 - 混用時以「層」為單位：角色層 12 fps、背景與鏡頭 30 fps（動畫的標準做法，見 anime.md）
 
@@ -340,7 +343,7 @@ ffmpeg -i in.mp4 -vf "trim=0:4.5,setpts=PTS-STARTPTS,tpad=start_mode=clone:start
 - 甩鏡（whip）：橫移距離 ≥ 半個畫面、時長 ≤ 4 格、`--samples 24+`，中點可以接剪點
 - ffmpeg 實拍版（實測）：
 ```bash
-# 慢推 1.00→1.06：用 editing.md 配方 10c 的 zoompan，z 改成 '1+0.06*on/N'（N = 推進的格數，6 秒 30 fps 是 180；on = 輸出格序）；同一條濾鏡只在 editing.md 維護，這裡不重複
+# 慢推 1.00→1.06：用 editing.md 配方 10c 的 zoompan，z 改成 'min(1+0.06*on/N,1.06)'（N = 推進的格數，8 小節 120 BPM 30 fps 是 480；on = 輸出格序）。min 讓 on > N 之後停在 1.06；沒有 min 會一直放大，與上面「超過 1.1 像縮放錯誤」衝突（實測 N=90：第 150 格對 z=1.06 常數參考 PSNR 40.8 dB，拿掉 min 的版本 14.3 dB、倍率已到 1.10）；同一條濾鏡只在 editing.md 維護，這裡不重複
 # 衰減震動：t=2 起，振幅 24/16 px、k=6（先放大 6% 避免露邊）
 ffmpeg -i in.mp4 -vf "scale=iw*1.06:-2,crop=1280:720:x='(iw-1280)/2+if(gte(t,2),24*exp(-(t-2)*6)*sin((t-2)*90),0)':y='(ih-720)/2+if(gte(t,2),16*exp(-(t-2)*6)*cos((t-2)*70),0)'" out.mp4
 # 衰減閃白：t=2 起亮度 +0.6，半衰期 0.08 秒（eq 要 eval=frame 才會逐格算）
@@ -420,7 +423,7 @@ ffmpeg -i in.mp4 -vf "scale=3840:2160:flags=lanczos" \
   - `render.py --fps N`：會注入 `window.RENDER_FPS`，`MV.fps` 與 `MV.frameIdx(t)` 的預設跟著走（實測 `--fps 24` → `MV.fps` 24、`MV.frameIdx(1.0)` 24、輸出 `r_frame_rate=24/1`）；頁面不要寫死 30
   - ±1 格的秒數：30 fps 33 ms、24 fps 41.7 ms、25 fps 40 ms、60 fps 16.7 ms；`qa.py` 用影片自己的 fps 算門檻，本文其他地方寫的 33 ms 都指 30 fps
   - 交付核對表的 `r_frame_rate` 改成對應值
-- 一拍二（12 fps）只在 24 fps 輸出時是每 2 格一換；30 fps 輸出時 `MV.frameIdx(t,12)` 會變成 2、2、3 格不等的停格（實測第 0–9 格 → 0 0 1 1 2 2 2 3 3 4；24 fps → 0 1 1 2 2 3 3 4 4 5），要均勻就改 15 fps（每 2 格）或 10 fps（每 3 格）
+- 一拍二的量化格率要能整除輸出格率（30 → 15 或 10；24 → 12 或 8），實測序列見三、〈一拍二〉
 
 ### 多比例交付（從 1080p 母帶裁）
 ```bash
@@ -455,7 +458,7 @@ ffprobe -v error -show_entries format=duration,size,bit_rate -of default=nw=1 de
 ffprobe -v trace deliver_1080p.mp4 2>&1 | grep -oE "type:'(moov|mdat)'" | head -2
 # 響度回量：Integrated 要是 −14.0 LUFS 上下 0.5、True peak ≤ −1.5
 ffmpeg -i deliver_1080p.mp4 -af "ebur128=peak=true" -f null - 2>&1 | grep -A12 "Summary:"
-# 黑場（d 秒以上、亮度低於 pix_th）、每格平均亮度、剪點位置（給 qa.py 比對）
+# 黑場（d 秒以上、亮度低於 pix_th；沒有黑場時沒有輸出）、每格平均亮度、剪點位置（給 qa.py 比對）
 ffmpeg -i deliver_1080p.mp4 -vf "blackdetect=d=0.05:pix_th=0.10" -an -f null -
 ffmpeg -i deliver_1080p.mp4 -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=yavg.txt" -an -f null -
 ffmpeg -i deliver_1080p.mp4 -vf "select='gt(scene,0.3)',showinfo" -an -f null - 2>&1 | grep -oE "pts_time:[0-9.]+"
@@ -469,7 +472,7 @@ ffmpeg -i deliver_1080p.mp4 -vf "select='gt(scene,0.3)',showinfo" -an -f null - 
 3. 層級：每個畫面的文字最多三層，相鄰層字級比 ≥ 1.6；一眼知道先看哪裡（遮住強調色後畫面仍有主體）
 4. 字距行距：標題字距在 −0.03～0 em、行距 ≥ 1.15 em；中英之間有 0.25 em；數字等寬；沒有行首標點
 5. 安全區：所有文字在 90% 安全區內；字幕距邊 ≥ 5%、距底 8–12%；有 letterbox 時以有效畫面（bar 到 H−bar）量，不是整張畫布；9:16 的文字在 y 15–72%、x 5–85%；沒有壓到人臉
-6. 拍點：`qa.py` 報告裡剪點與最近拍點誤差 ±1 格內的比例 ≥ 95%；每個動作的到位時刻在拍上
+6. 拍點：`qa.py` 報告裡剪點與最近拍點誤差 ±1 格內的比例 ≥ 90%（門檻以 `references/editing.md`〈1. 剪在哪裡〉為準，本文不另訂）；每個動作的到位時刻在拍上
 7. 緩動：全片用的緩動 ≤ 4 種且各有固定用途；沒有無終點的 `sin(t)` 漂移；震動與閃白都在 0.3 秒內衰減完
 8. 標點符號：flash／invert／impact frame 一小節 ≤ 1 次、一段落 ≤ 4 次；intro／verse／chorus 的強度是 40／70／100
 9. 後製：顆粒、暈影、halation、色差是全片常數；letterbox 黑邊乾淨；抽格比對「有／無」每一層都看得出存在理由
@@ -479,17 +482,12 @@ ffmpeg -i deliver_1080p.mp4 -vf "select='gt(scene,0.3)',showinfo" -an -f null - 
 答不出「是」的題目，修完再看一次整片；三題以上答「否」不交付。
 
 ## 七、實測紀錄
-- 環境：Linux x86_64、4 核心、ffmpeg 6.1.1-3ubuntu5（libx264、libx265 3.5、libvpx、libass、libfreetype、libfontconfig、libharfbuzz）、Chromium HeadlessChrome/141.0.7390.37（playwright 1.56，`--use-gl=angle --use-angle=swiftshader`）、Python 3（`/root/video-lab/.venv`）、字型 Noto Sans／Serif／Sans Mono CJK TC 各 Regular＋Bold
-- 素材：`ffmpeg -f lavfi -i "testsrc2=s=1280x720:r=30:d=6" -f lavfi -i "sine=f=440:r=44100:d=6" -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -c:a aac -b:a 128k -shortest src.mp4`
-- 色彩（一、全部 OK，各 1–3 秒；halation 5 秒、全堆疊 8.6 秒）：eq、curves preset、curves 自訂、colorbalance、colortemperature、colorchannelmixer 單色與褐色、lut3d（python 產 17³ .cube）、noise、vignette、halation、rgbashift、chromashift、letterbox、unsharp 柔化、柔光 bloom、全堆疊、negate；抽第 3 秒格拼 6 格對照確認效果方向正確
-- Canvas（二，playwright 跑 JS 探測）：`letterSpacing`／`wordSpacing`／`fontKerning`／`fontStretch`／`fontVariantCaps`／`textRendering`／`filter` 屬性都存在；`letterSpacing='6px'` 6 字寬 288→324、`'0.1em'` →316.8、`'-3px'` →270；kerning `To`（Sans）−3.55 px、`AV`（Serif）−6.34 px、中文配對 0；數字寬 Sans 26.64／Serif 26.40／Mono 24.00（48 px）；`canvas.style.fontFeatureSettings='"tnum"'` 不影響 ctx；字框 ascent 56／descent 14（48 px）；`lighter` 128+128→255、`screen` 64+64→112；`display-p3` context 可建立。字型解析：`Noto Sans TC` 與 `Noto Sans CJK TC` 同寬（404.26），`Noto Serif TC` 與 `NoSuchFont` 同寬（393.73）≠ `Noto Serif CJK TC`（427.68）；字重 300／400 與 700／900 各同寬。視覺圖 `type_visual.png`：字重、字距、Serif 兩種寫法、描邊與陰影、直書、逐字 kern 對齊整串
-- 補測（一、二）：halation opacity 0.45、`vignette=angle=PI/6`／`PI/5`／`PI/4`／`PI/3` 左上角 64×64 YAVG 37.6／29.7／18.7／5.9（無暈影 62.4；中央 125.5 → 125.3，angle 越大越暗）、`signalstats` HUEAVG 純色 64×64（綠 38、黃 99、紅 161、洋紅 218、藍 279、青 341；膚色 `0xE0AC69` 127、`0xC68642` 130、`0x8D5524` 133、`0xFFDBAC` 126）、`crop,signalstats` 量 HUEAVG 與 `vectorscope=mode=color3:graticule=green:flags=name` 抽格、`colortemperature=temperature=8000:mix=1:pl=1`、curves 九個 preset 名稱各轉 1 秒都 OK；Canvas `ctx.filter='blur(8px)'` 在 swiftshader 下有效（方塊外 4 px 讀到 `rgb(83,25,6)` 的光暈），讀回值為 `none` 表示 filter 是即時狀態、畫完要歸零
-- fontconfig：`fc-match "Noto Sans TC"` → NotoSansCJK-Regular.ttc；`fc-match "Noto Serif TC"` → DejaVuSans.ttf；`fc-match "Noto Serif CJK TC"` → NotoSerifCJK-Regular.ttc
-- 字幕（二）：drawtext 描邊＋陰影（`borderw` 給運算式會報 `Undefined constant`，改整數後 OK）、box 底板、`Noto Serif CJK TC` 字卡、`subtitles=test.srt:force_style=...` 都 OK，抽格拼成 `sub_sheet.png` 目視確認；字級換算（720p 黑底、Outline=0、numpy 量白畫素列數）：libass FontSize 22／28／29／30 → 墨跡高 35／45／47／48 px，drawtext fontsize 37／41／48／55 → 35／39／46／52 px
-- Canvas 補測（二、三、四，playwright）：半形空格 Sans 0.224 em、Serif 0.256 em、Mono 0.5 em；`MV.layout` 的 `font` 只給家族名時 `ctx.font` 不變（200 px 字量到 192 px 寬，給 `MV.font` 字串或函式得 800 px）；`MV.spring` freq 3 的峰值 damp 0.3／0.4／0.5／0.6／0.7 → 1.372／1.254／1.163／1.095／1.046；合成 100 fps rms（慢波＋逐格亂數）每格平均變化：原始 0.108、只套 smoothstep 0.154、往前 50 ms 平均 0.037、100 ms 平均 0.028
-- 輸出補測（五）：libx264 不給 `-bf` 時 ffprobe `pict_type` 連續 B 最長 3、`-bf 2` 最長 2；6 秒 testsrc2 `-preset medium` 3,203,475 bytes／`slow` 3,148,809 bytes，時間 1.3–2.5 倍（兩次量測）；loudnorm 第二段用 bash 變數代入四個量測值後 ebur128 回量 I −14.0 LUFS
-- 動態（三）：zoompan 慢推（配方已改為引用 editing.md 10c）、crop 運算式衰減震動、eq `eval=frame` 衰減閃白、tmix 三格、tpad 停格（輸出 6.000 秒）都 OK
-- 輸出（五）：loudnorm 第一段對 testsrc2＋sine 素材量到 I −21.76／TP −14.46／LRA 0.10／thresh −31.76（這組值只屬於測試素材，交付指令裡是佔位符）；第二段 linear，輸出 I −14.0、TP −6.7；1080p 交付 9.2 秒、4K H.264 2 秒素材 16.6 秒、4K HEVC 14.4 秒、9:16／1:1／4:5 各 5–7 秒；ffprobe 全部讀到 `bt709/bt709/bt709/tv`、`yuv420p`、`aac 48000`；`type:'moov'` 先於 `type:'mdat'`；ebur128 回量 I −14.0 LUFS、peak −6.8 dBFS；blackdetect 在無黑場素材無輸出（正常）、signalstats YAVG 可讀、scene 偵測在兩段 concat 的素材抓到 `pts_time:3`；縮圖三種指令 OK
-- 渲染時間（三，playwright 量 `render(t)`，每次後 `getImageData` 強制光柵化，5 次平均）：空白填色 5 ms、發光主標場景 132 ms、紙底場景 48 ms、`MV.post` grain 12／vignette 8／halation 86／三者 154 ms、整格含後製 150–203 ms；`render.py perf.html --dur 0.5 --fps 30 --samples 12 --shutter 0.5` 15 格 66.9 秒、`--dur 1`（N=1）30 格 27.7 秒、`--sheet 0.5,1,2.5,5` 5.6 秒；機器同時有其他工作，數字會浮動 ±50%
-- 補測（二、三、五）：色票條 `fps=20/6`（與 `20/6.5`、`20/187.3`）`,scale=8:8:flags=area,tile=20x1,scale=iw*8:ih*8:flags=neighbor` → 1280×64；letterbox 字幕順序（720p、2.39、黑邊 92 列、有效畫面 92–627 列，numpy 量白畫素列）：drawtext 在 crop/pad 之前 → 字只剩 624–627 列，之後且 y 減 bar → 546–583 列；libass `MarginV` 40／77／80 → 字底 611／519／511 列（2.5 px/單位）；Canvas 示範頁（1080p、2.39、bar 138）整張畫布算 → 標註（y 54）與字幕（y 994）被黑邊蓋住，有效畫面算 → 標註 182–197、字幕 832–881 列；`drawgrid` 三分線、12 欄＋`drawbox` 外框、Canvas `drawGrid` 輔助線都出圖；`neg_space.py` 示範頁 96%、testsrc2 16%；WCAG 對比比一行 Python（`EEE9DF`/`0A0A0B` 16.36、`807C76` 4.77、`5E5B57` 2.93）；`render.py --profile` 示範頁 halation 0／0.25 → render 平均 202／365 ms、截圖 189／202 ms；`--data cfg=xxx.json` 注入後頁面讀到 `window.DATA.cfg`；`--fps 24` → `r_frame_rate=24/1`、`MV.fps` 24；24 fps `-g 48` I 格在 0 與 2 秒；`MV.frameIdx(t,12)` 在 30 fps 為 2、2、3 格不等；`MV.safeArea(1920,1080,0.93)` → [67.2, 37.8, 1785.6, 1004.4]
-- 未測：`minterpolate` 光流動態模糊（太慢，未跑）；平臺介面遮擋區數值為保守經驗值，未對照各平臺當日官方範本；平臺端響度正規化（YouTube 的 −14 LUFS 為其公開參考值、IG／TikTok 的 −14 為經驗值，都無法在本機驗證）
+- 環境：Linux x86_64、4 核心、ffmpeg 6.1.1-3ubuntu5（libx264、libx265、libass、libfreetype、libfontconfig、libharfbuzz）、Chromium HeadlessChrome/141（playwright 1.56，`--use-gl=angle --use-angle=swiftshader`）、Node 22、Python 3（`/root/video-lab/.venv`）、字型 Noto Sans／Serif／Sans Mono CJK TC 各 Regular＋Bold
+- 素材：`ffmpeg -f lavfi -i "testsrc2=s=1280x720:r=30:d=6" -f lavfi -i "sine=f=440:r=44100:d=6" -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -c:a aac -b:a 128k -shortest src.mp4`；正文裡的實測數字都是對這支素材（或文中註明的合成訊號、示範頁）量的，只在正文出現一次，這裡不重抄
+- 一、色彩：eq、curves（九個 preset、自訂曲線）、colorbalance、colortemperature、colorchannelmixer（單色、褐色）、lut3d（`make_cube.py`）、noise、vignette（四個 angle 量左上角 YAVG）、halation、柔光 bloom、rgbashift、chromashift、unsharp 柔化、letterbox、全堆疊、色票條 `fps=20/DUR`、`signalstats` HUEAVG（純色、膚色、crop 臉區）、`vectorscope`；每條抽第 3 秒格拼圖目視方向
+- 二、字型排印（playwright 跑 JS 探測 Canvas 2D）：`letterSpacing`、`fontKerning` 配對、字框 ascent／descent、半形空格、數字寬、`fontVariantCaps`、`font-feature-settings`（`"palt"`／`"halt"`／`"tnum"`／`"pnum"`／`"smcp"`，DOM 寬度對照、掛與未掛 document、重設 `ctx.font` 前後、inline 與 class）、`ctx.filter` 讀回與 save/restore、`lighter`／`screen` 疊加值、`display-p3` context、字型別名解析與字重（`fc-match` 與 Chromium）、直書、`MV.layout`／`MV.drawGlyphs` kern 對齊整串、`MV.drawGlyphs`／`MV.karaoke` 的 `lineWidth` 預設與傳入
+- 二、字型排印（ffmpeg）：drawtext 描邊／陰影／box／明朝體字卡、`borderw` 運算式報錯、`subtitles` force_style、libass FontSize 與 drawtext fontsize 的墨跡高換算、letterbox 前後的字幕位置（drawtext 與 MarginV）、`drawgrid`／`drawbox` 輔助線、Canvas `drawGrid`、`neg_space.py`（PNG、影片第一格、前 3 格黑後全白的測試片）、WCAG 對比比一行 Python
+- 三、動態：`MV.spring` 各 damp 峰值、`MV.frameIdx` 在 30／24 fps 的量化序列（Node 跑 `mv-kit.js`）、zoompan 慢推（`min` 上限，PSNR 對常數參考）、crop 運算式衰減震動、eq `eval=frame` 衰減閃白、tmix、tpad 停格、`render.py --profile`／`--samples`／`--sheet`／`--data cfg=`／`--fps 24`
+- 四、聲畫對位：合成 100 fps rms 的每格變化（原始、只 smoothstep、往前 50／100 ms 平均）
+- 五、輸出：loudnorm 兩段式（含 bash 變數代入）與 ebur128 回量、1080p／4K H.264／4K HEVC 交付、`-bf 2` 與 `-g 48` 的 ffprobe 核對、preset medium／slow 檔案大小與時間、9:16／1:1／4:5 裁切、縮圖三種指令、ffprobe 核對表、faststart、blackdetect、signalstats YAVG、scene 偵測
+- 未測：`minterpolate` 光流動態模糊（太慢，未跑）；平臺介面遮擋區數值為保守經驗值，未對照各平臺當日官方範本；平臺端響度正規化（YouTube 的 −14 LUFS 為其公開參考值、IG／TikTok 的 −14 為經驗值，都無法在本機驗證）；preset slow 對實拍素材的檔案差距

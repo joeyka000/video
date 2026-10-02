@@ -10,6 +10,7 @@
   python render.py page.html -o out/mv.mp4 --dur 10 --samples 6 --shutter 0.5     # 子格平均動態模糊（Canvas 2D）
   python render.py page.html -o out/mv4k.mp4 --dur 10 --scale 2                   # 3840×2160（deviceScaleFactor 2）
   python render.py page.html -o out/cuts.png --cuts                                # 讀 window.CUTS 出剪點拼圖
+  python render.py page.html -o out/mv.mp4 --dur 10 --dump-cuts out/mv.cuts.json   # 另把 window.CUTS 寫成 JSON 給 qa.py --cuts
   python render.py page.html -o out/mv.mp4 --dur 10 --profile                      # 印每格 render／截圖毫秒數
 
 頁面約定：
@@ -24,10 +25,15 @@
   - 截圖走 CDP（Chrome DevTools Protocol）Page.captureScreenshot 的 optimizeForSpeed（PNG 不壓縮），畫素與 page.screenshot
     完全相同、--alpha 與 --scale 也相同；1080p 每格截圖約 60–180 ms（內容越雜越慢），page.screenshot 要 100–490 ms。
   - --cuts：每個剪點出前 2 格、該格、後 2 格（一列 5 格，該格標籤加 <），看剪點有沒有差一格。
+  - --dump-cuts PATH：把 window.CUTS 寫成 {"offset": --from, "fps": --fps, "cuts": [秒, ...]}（歌曲絕對秒），
+    可與影片輸出同一次跑；qa.py --cuts 直接吃這個檔。
+  - 音軌編碼依副檔名：.webm 用 libopus 128k（WebM 不收 AAC），其他用 aac 192k；--alpha 只接受 .mov／.webm，
+    .mp4 不支援透明會直接報錯。render(t) 丟例外、pageerror 或 ffmpeg 失敗時刪掉寫到一半的輸出檔再以非 0 結束。
   - 頁面的 console.error 與未捕捉的例外（pageerror）會印到 stderr；有 pageerror 或 render(t) 丟例外時以非 0 結束。
   - --audio：先用 ffprobe 查音訊長度；--from 之後剩下的音訊比影片短時印警告，並用 apad 補靜音到影片長度（不截短影片）。
   - --profile：每格印 render(t) 與截圖各花幾毫秒到 stderr，最後印平均與最大值；用來找頁面的效能瓶頸。
-  - 拼圖（--sheet／--cuts）每格下方加 28 px 黑條放標籤，不壓到畫面。
+  - 拼圖（--sheet／--cuts）每格下方加 28 px 黑條放標籤，不壓到畫面；標籤超過黑條寬度（中文算 2 個單位、共 42 單位）
+    會截斷加「…」，不會被下一格蓋掉。
 """
 import argparse
 import base64
@@ -36,6 +42,7 @@ import os
 import subprocess
 import sys
 import time
+import unicodedata
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
@@ -71,6 +78,24 @@ def encoder_args(out, alpha):
     return ["-c:v", "libx264", "-crf", "16", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
 
 
+def audio_args(out):
+    """音軌編碼依容器：WebM 只收 Opus／Vorbis（給 aac 會 Could not write header），其他用 AAC。"""
+    if os.path.splitext(out)[1].lower() == ".webm":
+        return ["-c:a", "libopus", "-b:a", "128k"]
+    return ["-c:a", "aac", "-b:a", "192k"]
+
+
+def remove_partial(path):
+    """失敗時刪掉寫到一半的輸出檔，免得下游（qa.py、concat）誤用；回傳是否有刪。"""
+    if path and os.path.exists(path):
+        try:
+            os.remove(path)
+            return True
+        except OSError:
+            pass
+    return False
+
+
 def probe_duration(path):
     """用 ffprobe 取音訊檔長度（秒）；取不到回傳 None。"""
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
@@ -86,11 +111,25 @@ def safe_label(s):
     return "".join(ch if ch not in "'\";:,\\[]%" else " " for ch in s)
 
 
+def fit_label(s, max_units=42):
+    """把標籤截到黑條放得下的寬度：全形（中日韓）字算 2 單位、其他 1 單位；fontsize 20 時 1 單位約 11 px，
+    480 px 寬的格子扣掉左邊 8 px 約放 42 單位。超過就截斷加「…」。"""
+    w = 0
+    out = []
+    for ch in s:
+        u = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if w + u > max_units - 2:
+            return "".join(out) + "…"
+        out.append(ch)
+        w += u
+    return s
+
+
 def sheet_filter(labels, cols, cmd_path):
     """把逐格標籤寫成 sendcmd 指令檔；回傳拼圖用的 -vf 字串（輸入 -framerate 1，第 i 張在第 i 秒）。"""
     with open(cmd_path, "w", encoding="utf-8") as f:
         for i, lab in enumerate(labels):
-            f.write(f"{i}.0 drawtext reinit 'text={safe_label(lab)}';\n")
+            f.write(f"{i}.0 drawtext reinit 'text={safe_label(fit_label(lab))}';\n")
     rows = (len(labels) + cols - 1) // cols
     # 先縮到 480 寬、下方補 28 px 黑條，標籤畫在黑條上（不壓到畫面）
     return (f"sendcmd=f={cmd_path},scale=480:-2,pad=iw:ih+28:0:0:black,"
@@ -116,9 +155,14 @@ def main():
     ap.add_argument("--data", action="append", default=[], metavar="KEY=PATH", help="注入 window.DATA[KEY] = JSON")
     ap.add_argument("--cuts", action="store_true", help="讀頁面 window.CUTS 輸出剪點拼圖（每個剪點前後各 2 格，一列 5 格）")
     ap.add_argument("--profile", action="store_true", help="每格印 render／截圖毫秒數到 stderr")
+    ap.add_argument("--dump-cuts", dest="dump_cuts", metavar="PATH",
+                    help="把頁面 window.CUTS 寫成 JSON（{offset,fps,cuts}）給 qa.py --cuts 用；可與影片輸出同時")
     a = ap.parse_args()
     if a.scale < 1 or a.samples < 1 or a.fps < 1:
         ap.error("--scale、--samples、--fps 都要 ≥ 1")
+    out_ext = os.path.splitext(a.out)[1].lower()
+    if a.alpha and not (a.sheet or a.cuts) and out_ext not in (".mov", ".webm"):
+        ap.error(f"--alpha 需要 .mov（ProRes 4444）或 .webm（VP9）；{out_ext or '（無副檔名）'} 不支援透明，會變成不透明的 yuv420p")
     if not os.path.exists(a.html):
         sys.exit(f"找不到頁面：{a.html}")
 
@@ -179,6 +223,16 @@ def main():
         if not a.sheet and not a.cuts and not dur:
             browser.close()
             sys.exit("需要 --dur 或頁面上的 window.DURATION")
+        if a.dump_cuts:
+            cuts = page.evaluate("Array.isArray(window.CUTS) ? window.CUTS : null")
+            if not cuts:
+                browser.close()
+                sys.exit("--dump-cuts 需要頁面定義 window.CUTS = [秒, ...]")
+            os.makedirs(os.path.dirname(os.path.abspath(a.dump_cuts)), exist_ok=True)
+            with open(a.dump_cuts, "w", encoding="utf-8") as f:
+                json.dump({"offset": a.t0, "fps": a.fps, "cuts": [round(float(c), 4) for c in cuts]}, f,
+                          ensure_ascii=False, indent=1)
+            print(f"寫入 {a.dump_cuts}（{len(cuts)} 個剪點）", file=sys.stderr)
 
         def shot(t):
             t_a = time.perf_counter()
@@ -235,8 +289,7 @@ def main():
                         print(f"警告：{a.audio} 從 {a.t0:g} 秒起只剩 {max(0.0, audio_dur - a.t0):.3f} 秒，影片 {total:.3f} 秒，"
                               f"不足的補靜音", file=sys.stderr)
                     # apad 補靜音、-t 切齊影片長度（不用 -shortest：音訊短時它會把影片截短）
-                    ff += ["-ss", str(a.t0), "-i", a.audio, "-af", "apad", "-t", f"{total:.6f}",
-                           "-c:a", "aac", "-b:a", "192k"]
+                    ff += ["-ss", str(a.t0), "-i", a.audio, "-af", "apad", "-t", f"{total:.6f}"] + audio_args(a.out)
                 ff += encoder_args(a.out, a.alpha) + [a.out]
                 pr = subprocess.Popen(ff, stdin=subprocess.PIPE)
                 for i in range(n):
@@ -261,8 +314,12 @@ def main():
         print(f"每格 render 平均 {sum(r) / len(r):.0f} ms（最大 {max(r):.0f}）  截圖平均 {sum(q) / len(q):.0f} ms"
               f"（最大 {max(q):.0f}）  共 {len(prof)} 格", file=sys.stderr)
     if page_errors:
-        sys.exit(f"頁面有 {len(page_errors)} 個錯誤（見 stderr），輸出不可信")
+        removed = remove_partial(a.out)
+        sys.exit(f"頁面有 {len(page_errors)} 個錯誤（見 stderr），輸出不可信" + ("，已刪除 " + a.out if removed else ""))
     if pr is None or pr.returncode:
+        removed = remove_partial(a.out)
+        print(f"ffmpeg 失敗（exit {pr.returncode if pr else 1}）" + ("，已刪除寫到一半的 " + a.out if removed else ""),
+              file=sys.stderr)
         sys.exit(pr.returncode if pr else 1)
     print(a.out)
 

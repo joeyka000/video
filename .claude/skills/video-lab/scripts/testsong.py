@@ -15,8 +15,11 @@
 
 同時輸出 song.truth.json（與 -o 同名、副檔名 .truth.json）：
   { "duration", "sr", "tempo", "meter": 4, "beats": [秒,...], "downbeats": [秒,...],
-    "sections": [{"name","start","end","bar"}, ...] }
-欄位格式與 analyze.py 的 audio.json 相同，可直接比對。
+    "sections": [{"name","start","end","bar"}, ...],
+    "onsets": {"kick": [秒,...], "snare": [...], "hat": [...]}, "notes": "..." }
+欄位格式與 analyze.py 的 audio.json 相同，可直接比對（含 onsets 真值：合成時放下去的時間）。
+注意：chorus 每個正拍都有 hat，第 2、4 拍與 snare 同時；analyze.py 會排除 snare ±40 ms 內的 hat，
+所以 analyze 的 hat 數比真值少（每小節少 2 個）是設計使然，不是漏抓。
 """
 import argparse
 import json
@@ -158,6 +161,7 @@ def main():
     sn_sig = snare(sr, 0.7, rng)
     hat_on = hat(sr, 0.28, rng)
     hat_off = hat(sr, 0.18, rng)
+    onsets = {"kick": [], "snare": [], "hat": []}   # 真值：實際放下去的時間（秒）
 
     for bar in range(a.bars):
         kind = section_of(bar).rstrip("0123456789")
@@ -171,6 +175,7 @@ def main():
             if kind == "intro":
                 continue
             add(y, s0, k_sig[1.0 if kind == "chorus" else 0.8])
+            onsets["kick"].append(round(s0 / sr, 4))
             accent = 1.15 if beat == 0 else 1.0
             if kind == "verse":
                 add(y, s0, bass_note(hz(root), P * 0.95, sr, 0.35 * accent))
@@ -179,8 +184,12 @@ def main():
                 add(y, int(round((t_beat + P / 2) * sr)), bass_note(hz(root), P / 2 * 0.95, sr, 0.40))
                 if beat in (1, 3):
                     add(y, s0, sn_sig)
+                    onsets["snare"].append(round(s0 / sr, 4))
                 add(y, s0, hat_on)
-                add(y, int(round((t_beat + P / 2) * sr)), hat_off)
+                onsets["hat"].append(round(s0 / sr, 4))
+                s_off = int(round((t_beat + P / 2) * sr))
+                add(y, s_off, hat_off)
+                onsets["hat"].append(round(s_off / sr, 4))
         if kind == "chorus":
             # chorus 整段再大聲一些
             seg = slice(int(t_bar * sr), int((t_bar + bar_dur) * sr))
@@ -200,13 +209,16 @@ def main():
     truth = {
         "duration": round(len(y) / sr, 4), "sr": sr, "tempo": a.bpm, "meter": METER,
         "beats": beats, "downbeats": downbeats, "sections": sec_json,
+        "onsets": onsets,
+        "notes": "onsets 是合成時放下去的時間。chorus 第 2、4 拍的 hat 與 snare 同時，analyze.py 會排除 snare ±40 ms 內的 hat，"
+                 "所以 analyze 的 hat 數每小節比這裡少 2 個是設計使然。",
     }
     truth_path = os.path.splitext(a.out)[0] + ".truth.json"
     with open(truth_path, "w", encoding="utf-8") as f:
         json.dump(truth, f, ensure_ascii=False, indent=1)
 
     print(f"寫入 {a.out}  {dur:.2f} 秒  {a.bpm:g} BPM  {a.bars} 小節  第一拍 {LEAD} 秒")
-    print(f"真值 {truth_path}")
+    print(f"真值 {truth_path}  onsets kick {len(onsets['kick'])} snare {len(onsets['snare'])} hat {len(onsets['hat'])}")
     print(f"{'段落':<10}{'起(秒)':>9}{'迄(秒)':>9}{'小節':>6}")
     for s in sec_json:
         print(f"{s['name']:<10}{s['start']:>9.3f}{s['end']:>9.3f}{s['bar']:>6}")

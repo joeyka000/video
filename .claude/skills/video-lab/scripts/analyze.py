@@ -9,7 +9,9 @@
 
 做法：
   1. onset envelope（librosa.onset.onset_strength，混音＋低頻帶）→ tempo（librosa.feature.tempo；--bpm 可覆寫）
-  2. 擬合常數拍格：對 tempo（±7%）與相位做網格搜尋，最大化拍點上的 onset 強度，再用 kick 攻擊點的中位殘差修正相位
+  2. 擬合常數拍格：對 tempo（±7%）與相位做網格搜尋，最大化拍點上的 onset 強度，再用 kick 攻擊點的中位殘差修正相位，
+     最後對拍格 ±60 ms 內的 kick 做「拍序→時間」線性回歸修 tempo（斜率 = 拍長；要 ≥ 8 個 kick、跨 ≥ 8 拍、
+     修正量 ≤ 0.5% 才採用；--bpm 固定時不做）。摘要會印修正前後的 max 殘差
      （--first-beat 秒 可覆寫：拍格從這個時間開始，而且它就是 bar 0 的 downbeat）
   3. downbeat：在 meter 個相位中，選「低頻 onset（kick）＋混音 onset＋和絃變化（chroma 差異）」最強的相位
   4. sections：--sections 給「名稱:小節序」（bar 0 = 第一個 downbeat，每段到下一段開始為止，最後一段到曲末；
@@ -176,6 +178,7 @@ def fit_grid(o, ofps, duration, bpm0, fixed_bpm=False):
 
 
 def refine_phase_on_kicks(kick_t, P, off):
+    """用拍格 ±60 ms 內的 kick 攻擊點的中位殘差修正相位。回傳 (off, 殘差 sd)。"""
     if len(kick_t) < 4:
         return off, 0.0
     n = np.round((kick_t - off) / P)
@@ -186,6 +189,41 @@ def refine_phase_on_kicks(kick_t, P, off):
     off = off + float(np.median(res))
     off = off - P * math.floor(off / P)
     return off, float(res.std())
+
+
+def refine_tempo_on_kicks(kick_t, P, off, tol=0.060, min_n=8, min_span=8, max_change=0.005):
+    """網格搜尋的 tempo 步進有限（最細 0.0002 BPM），短歌也會有 0.1% 的誤差、累積到曲末偏一格；
+    對拍格 ±tol 內的 kick 做「拍序 n → kick 時間」的最小平方線性回歸：斜率 = 拍長 P、截距 = 相位。
+    要 ≥ min_n 個 kick、跨 ≥ min_span 拍，且修正量 |ΔP/P| ≤ max_change（避免被 bass 攻擊或錯拍帶走）才採用。
+    回傳 (P, off, 修正前 max 殘差, 修正後 max 殘差, 採用的 kick 數)；沒採用時 P、off 原樣回傳。"""
+    if len(kick_t) < min_n:
+        return P, off, 0.0, 0.0, 0
+    n = np.round((kick_t - off) / P)
+    res = kick_t - (off + n * P)
+    keep = np.abs(res) < tol
+    if keep.sum() < min_n or (n[keep].max() - n[keep].min()) < min_span:
+        return P, off, 0.0, 0.0, 0
+    before = float(np.abs(res[keep]).max())
+    slope, icept = np.polyfit(n[keep], kick_t[keep], 1)
+    if abs(slope - P) / P > max_change:
+        return P, off, before, before, 0
+    P2, off2 = float(slope), float(icept)
+    res2 = kick_t[keep] - (off2 + n[keep] * P2)
+    off2 = off2 - P2 * math.floor(off2 / P2)
+    return P2, off2, before, float(np.abs(res2).max()), int(keep.sum())
+
+
+def beat_sync(F, times, fps):
+    """把特徵矩陣 F（列=特徵、欄=格）依 times（秒）切成每個區間一欄：第 i 欄 = 第 i 個時間到第 i+1 個時間（最後一個到結尾）
+    的平均。兩個時間落在同一格（例如第一拍在 0.02 秒內、或拍比格密）時取該格本身，欄數永遠等於 len(times)。
+    不用 librosa.util.sync：它會把邊界 0 與 frames[0]==0 合併、少回一欄，下游指派時 shape 不符。"""
+    n = F.shape[1]
+    b = np.clip(np.round(np.asarray(times) * fps).astype(int), 0, n - 1)
+    ends = np.append(b[1:], n)
+    out = np.empty((F.shape[0], len(b)))
+    for i, (s, e) in enumerate(zip(b, ends)):
+        out[:, i] = F[:, s:e].mean(1) if e > s else F[:, s]
+    return out
 
 
 def pick_downbeat_phase(beats, meter, o_mix, o_low, ofps, y, sr):
@@ -201,12 +239,9 @@ def pick_downbeat_phase(beats, meter, o_mix, o_low, ofps, y, sr):
     # 和絃變化：每拍的 chroma 與前一拍的 cos 距離
     y22 = librosa.resample(y, orig_sr=sr, target_sr=OSR)
     chroma = librosa.feature.chroma_stft(y=y22, sr=OSR, hop_length=512)
-    frames = librosa.time_to_frames(beats, sr=OSR, hop_length=512)
-    frames = np.clip(frames, 0, chroma.shape[1] - 1)
-    # sync 的第 0 欄是第一個邊界之前的片段，第 i+1 欄才是第 i 拍
-    bc = librosa.util.sync(chroma, frames, aggregate=np.mean)[:, 1: len(beats) + 1]
+    bc = beat_sync(chroma, beats, OSR / 512)
     bc = bc / (np.linalg.norm(bc, axis=0, keepdims=True) + 1e-9)
-    nov = np.zeros(len(beats))
+    nov = np.zeros(bc.shape[1])
     nov[1:] = 1 - np.sum(bc[:, 1:] * bc[:, :-1], axis=0)
     nov = nov / (nov.mean() + 1e-9)
     scores = []
@@ -220,17 +255,14 @@ def pick_downbeat_phase(beats, meter, o_mix, o_low, ofps, y, sr):
 def bar_features(y, sr, downbeats):
     """每小節一欄：MFCC(1–12)＋log RMS（×3 權重）＋spectral contrast，各特徵跨小節標準化。"""
     import librosa
-    nb = len(downbeats)
     y22 = librosa.resample(y, orig_sr=sr, target_sr=OSR)
     hop = 512
     mfcc = librosa.feature.mfcc(y=y22, sr=OSR, hop_length=hop, n_mfcc=13)[1:]
     rms = np.log(librosa.feature.rms(y=y22, hop_length=hop) + 1e-6)
     contrast = librosa.feature.spectral_contrast(y=y22, sr=OSR, hop_length=hop)
-    frames = librosa.time_to_frames(downbeats, sr=OSR, hop_length=hop)
-    frames = np.clip(frames, 0, mfcc.shape[1] - 1)
     feats = []
     for F, rep in ((mfcc, 1), (rms, 3), (contrast, 1)):
-        S = librosa.util.sync(F, frames, aggregate=np.mean)[:, 1: nb + 1]   # 第 0 欄是第一個 downbeat 之前
+        S = beat_sync(F, downbeats, OSR / hop)   # 每小節一欄（nb 欄；第一個 downbeat 在第 0 格也不會少欄）
         S = (S - S.mean(1, keepdims=True)) / (S.std(1, keepdims=True) + 1e-9)
         feats.append(np.repeat(S, rep, axis=0))   # RMS 加權（段落最明顯的差別是音量與編制）
     return np.vstack(feats)
@@ -424,6 +456,14 @@ def main():
     P = 60 / bpm
     kt, st, ht = drum_onsets(y, SR)
     off, kick_sd = refine_phase_on_kicks(kt, P, off)
+    tempo_note = ""
+    if not a.bpm:
+        # 相位修好後再用 kick 回歸修 tempo（--bpm 固定時不動）
+        P, off, r_before, r_after, n_fit = refine_tempo_on_kicks(kt, P, off)
+        bpm = 60 / P
+        if n_fit:
+            tempo_note = f"  kick 回歸修正 tempo（{n_fit} 個 kick，max 殘差 {r_before * 1000:.1f} → {r_after * 1000:.1f} ms）"
+            _, kick_sd = refine_phase_on_kicks(kt, P, off)
     if a.first_beat is not None:
         off = a.first_beat - P * math.floor(a.first_beat / P)
         t_first = a.first_beat
@@ -489,7 +529,7 @@ def main():
     # 摘要
     print(f"檔案 {a.song}  長度 {duration:.2f} 秒")
     print(f"tempo {bpm:.3f} BPM（初估 {bpm0:.1f}{'，--bpm 固定' if a.bpm else ''}）  拍長 {P:.5f} 秒  "
-          f"kick 殘差 sd {kick_sd * 1000:.1f} ms")
+          f"kick 殘差 sd {kick_sd * 1000:.1f} ms{tempo_note}")
     print(f"第一拍 {beats[0]:.3f} 秒  拍數 {len(beats)}  downbeat 相位 {k0}/{a.meter}  小節數 {len(downbeats)}  "
           f"第一個 downbeat {downbeats[0]:.3f} 秒")
     if phase_scores:

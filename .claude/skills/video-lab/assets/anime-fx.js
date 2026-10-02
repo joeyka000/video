@@ -1,5 +1,5 @@
 // anime-fx.js — 日系動畫演出效果（Canvas 2D）
-// 每個函式的畫面只由參數 t（秒）決定，不累加狀態，可直接用在 render(t)。
+// 每個函式的畫面只由引數 t（秒）決定，不累加狀態，可直接用在 render(t)。
 // 用法：<script src="anime-fx.js"></script> 之後用 AFX.xxx(ctx, t, {...})。
 // 對照說明見 ../references/anime.md
 (() => {
@@ -61,8 +61,8 @@
     c.restore();
   }
 
-  // 畫面動（画面動）：整個畫面抖動。回傳 [dx, dy]，在畫主體前 ctx.translate(dx, dy)
-  // amp 為像素幅度，decay 為從 t0 起衰減的秒數（0 = 不衰減）
+  // 畫面震動（日文術語見 references/anime.md 的 AFX.shake 列）：整個畫面抖動。回傳 [dx, dy]，在畫主體前 ctx.translate(dx, dy)
+  // amp 為畫素幅度，decay 為從 t0 起衰減的秒數（0 = 不衰減）
   function shake(t, o = {}) {
     const t0 = o.t0 ?? 0, amp = o.amp ?? 24, fps = o.fps ?? 24;
     if (t < t0) return [0, 0];

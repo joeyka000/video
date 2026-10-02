@@ -7,8 +7,8 @@
 
 產出（-o 預設 out/qa）：
   sheet_<段落>.png   每個段落在其 downbeats 抽格的拼圖（每格標歌曲秒數；超過 32 格時均勻取樣）
-  report.md          繁體中文報告：剪點與最近拍點的誤差、落在 ±1 格內的比例、每秒亮度、黑場、閃白；
-                     給 --cuts 時另列預期剪點 vs 偵測到的剪點
+  report.md          繁體中文報告：剪點與最近拍點的誤差、落在整拍／半拍 ±1 格內的比例、每秒亮度、黑場、閃白；
+                     給 --cuts 時另列預期剪點 vs 偵測到的剪點（以預期剪點的命中率為準）
 
 做法：
   - 剪點：ffmpeg select='gt(scene,門檻)' + metadata=print（印出用的方法）；fps 用 ffprobe 取。
@@ -17,8 +17,13 @@
     門檻用 --threshold 調（越低越敏感）
   - 亮度：signalstats 的 YAVG（0–255，限制範圍黑位 16、白位 235）
       黑場 = YAVG ≤ 16 連續 ≥ 0.5 秒；閃白 = YAVG ≥ 235 的格（連續的算一次）
-  - --cuts 接受兩種格式：[秒, ...]（歌曲絕對秒）或 cutlist.py 的 OUT.cuts.json
-    （{"offset": 影片 0 秒對應的歌曲秒, "cuts": [...]}）；offset 會用在拍點比對與抽格
+  - 踩拍比例分兩欄：「整拍 ±1 格」只算 beats；「半拍 ±1 格」把拍與拍的中點也算進去（刻意剪在 2.5 拍的剪點
+    在整拍欄是「否」、半拍欄是「是」）。半拍剪點依設計不算在整拍比例內，別拿整拍比例單獨判合格；
+    有 --cuts 時以「預期剪點命中率」為準（剪點表裡每個剪點都是設計過的）
+  - --cuts 接受兩種格式：[秒, ...]（歌曲絕對秒）或 cutlist.py／render.py --dump-cuts 的 OUT.cuts.json
+    （{"offset": 影片 0 秒對應的歌曲秒, "fps", "cuts": [...], "rows": [{"f": 格序, ...}]}）；offset 會用在拍點比對與抽格。
+    有 rows（cutlist.py 產的）時預期時間用 offset + f/fps（成片實際落的格），不用剪點表未量化的秒，
+    報告同時列「剪點表秒」與「成片格秒」；只有 cuts 時預期時間含最多半格的量化誤差
   - 沒有 --cuts 時假設影片 0 秒 = 歌曲 0 秒
 """
 import argparse
@@ -27,6 +32,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from fractions import Fraction
 
 
@@ -72,6 +78,20 @@ def safe_label(s):
     return "".join(ch if ch not in "'\";:,\\[]%" else " " for ch in s)
 
 
+def fit_label(s, max_units=42):
+    """把標籤截到黑條放得下的寬度：全形（中日韓）字算 2 單位、其他 1 單位；fontsize 20 時 1 單位約 11 px，
+    480 px 寬的格子扣掉左邊 8 px 約放 42 單位。超過就截斷加「…」。"""
+    w = 0
+    out = []
+    for ch in s:
+        u = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if w + u > max_units - 2:
+            return "".join(out) + "…"
+        out.append(ch)
+        w += u
+    return s
+
+
 def safe_name(s):
     return re.sub(r"[^\w\-]+", "_", s).strip("_") or "section"
 
@@ -103,20 +123,28 @@ def main():
     downbeats = sorted(audio["downbeats"])
     sections = audio.get("sections") or [{"name": "all", "start": 0, "end": audio["duration"]}]
     offset = 0.0
-    expected = None
+    expected = None       # [(剪點表秒, 預期格秒)]：有 rows 時預期格秒 = offset + f/fps，否則兩者相同
+    quantized = False
     if a.cuts:
         with open(a.cuts, encoding="utf-8") as f:
             c = json.load(f)
         if isinstance(c, dict):
             offset = float(c.get("offset", 0))
-            expected = [float(x) for x in c.get("cuts", [])]
+            expected = [(float(x), float(x)) for x in c.get("cuts", [])]
+            rows_meta = c.get("rows") or []
+            cfps = float(c.get("fps") or 0)
+            if rows_meta and cfps and len(rows_meta) == len(expected) and all("f" in r for r in rows_meta):
+                expected = [(te, offset + float(r["f"]) / cfps) for (te, _), r in zip(expected, rows_meta)]
+                quantized = True
         else:
-            expected = [float(x) for x in c]
+            expected = [(float(x), float(x)) for x in c]
     os.makedirs(a.out, exist_ok=True)
     info = probe(a.video)
     fps, dur = info["fps"], info["dur"]
     fr = 1.0 / fps
     total_frames = info["nb"] or int(round(dur * fps))
+    # 半拍格：拍與拍的中點也算（刻意剪在 2.5 拍的剪點）
+    half_beats = sorted(set(beats) | {(p + q) / 2 for p, q in zip(beats, beats[1:])})
 
     # 1. 剪點偵測
     thr = f"{a.threshold:g}"
@@ -136,10 +164,14 @@ def main():
         ts = tv + offset
         nb, eb = nearest(beats, ts)
         nd, ed = nearest(downbeats, ts)
+        nh, eh = nearest(half_beats, ts)
         cut_rows.append({"tv": tv, "ts": ts, "score": score, "beat": nb, "err": eb, "db": nd, "err_db": ed,
-                         "on_beat": abs(eb) <= fr + 1e-6, "on_db": abs(ed) <= fr + 1e-6})
+                         "half": nh, "err_half": eh,
+                         "on_beat": abs(eb) <= fr + 1e-6, "on_db": abs(ed) <= fr + 1e-6,
+                         "on_half": abs(eh) <= fr + 1e-6})
     n_cut = len(cut_rows)
     n_on = sum(r["on_beat"] for r in cut_rows)
+    n_on_half = sum(r["on_half"] for r in cut_rows)
     n_on_db = sum(r["on_db"] for r in cut_rows)
     mae = sum(abs(r["err"]) for r in cut_rows) / n_cut * 1000 if n_cut else 0.0
 
@@ -196,7 +228,7 @@ def main():
         # 所以每條分支的 drawtext 取名 drawtext@s{k}，指令檔也只對它下指令
         with open(cmd_path, "w", encoding="utf-8") as f:
             for fi, d in frames:
-                lab = safe_label(f"{s['name']} {d:.3f}s")
+                lab = safe_label(fit_label(f"{s['name']} {d:.3f}s"))
                 f.write(f"{max(0.0, (fi - 0.5) / fps):.4f} drawtext@s{k} reinit 'text={lab}';\n")
         cmd_files.append(cmd_path)
         sel = "+".join(f"eq(n\\,{fi})" for fi, _ in frames)
@@ -221,17 +253,17 @@ def main():
     extra = 0
     if expected is not None:
         det_ts = [r["ts"] for r in cut_rows]
-        for te in expected:
+        for tc, te in expected:   # tc = 剪點表秒、te = 預期格秒
             if te - offset < fr * 0.5:
-                exp_rows.append((te, None, None, "影片開頭（不算剪點）"))
+                exp_rows.append((tc, te, None, None, "影片開頭（不算剪點）"))
                 continue
             nd, e = nearest(det_ts, te)
             miss = f"未偵測到（門檻 {thr}）"
             if nd is None:
-                exp_rows.append((te, None, None, miss))
+                exp_rows.append((tc, te, None, None, miss))
             else:
-                exp_rows.append((te, nd, e, "命中" if abs(e) <= fr + 1e-6 else miss))
-        hit_ts = {r[1] for r in exp_rows if r[3] == "命中"}
+                exp_rows.append((tc, te, nd, e, "命中" if abs(e) <= fr + 1e-6 else miss))
+        hit_ts = {r[2] for r in exp_rows if r[4] == "命中"}
         extra = sum(1 for t in det_ts if t not in hit_ts)
 
     # 5. 報告
@@ -244,23 +276,31 @@ def main():
     L.append("- 偵測限制：同鏡頭子剪（punch-in）與相似畫面間的剪點場景分數低，常偵測不到；"
              "「未偵測到」不代表成片有問題，請對照段落拼圖或調低 --threshold 再跑\n")
     L.append("## 剪點與拍點\n")
-    L.append(f"- 偵測到 {n_cut} 個剪點；落在最近拍點 ±1 格（±{fr * 1000:.1f} ms）內 {n_on} 個"
-             f"（{n_on / n_cut * 100 if n_cut else 0:.0f}%）；落在 downbeat ±1 格內 {n_on_db} 個；平均絕對誤差 {mae:.1f} ms\n")
-    L.append("| # | 影片秒 | 歌曲秒 | 場景分數 | 最近拍 | 誤差 ms | ±1 格 | 最近 downbeat | 誤差 ms |")
-    L.append("|--:|--:|--:|--:|--:|--:|:-:|--:|--:|")
+    pct = lambda n: f"{n / n_cut * 100 if n_cut else 0:.0f}%"
+    L.append(f"- 偵測到 {n_cut} 個剪點；落在最近整拍 ±1 格（±{fr * 1000:.1f} ms）內 {n_on} 個（{pct(n_on)}）；"
+             f"落在最近半拍（含整拍）±1 格內 {n_on_half} 個（{pct(n_on_half)}）；落在 downbeat ±1 格內 {n_on_db} 個；"
+             f"平均絕對誤差（對整拍）{mae:.1f} ms")
+    L.append("- 半拍剪點（例如剪點表的 beat 2.5）依設計不算在整拍比例內，判合格看半拍比例" +
+             ("；有 --cuts 時以下方「預期剪點命中率」為準\n" if expected is not None else "\n"))
+    L.append("| # | 影片秒 | 歌曲秒 | 場景分數 | 最近整拍 | 誤差 ms | 整拍 ±1 格 | 最近半拍 | 誤差 ms | 半拍 ±1 格 | 最近 downbeat | 誤差 ms |")
+    L.append("|--:|--:|--:|--:|--:|--:|:-:|--:|--:|:-:|--:|--:|")
     for i, r in enumerate(cut_rows, 1):
         L.append(f"| {i} | {r['tv']:.3f} | {r['ts']:.3f} | {r['score']:.2f} | {r['beat']:.3f} | {r['err'] * 1000:+.1f} | "
-                 f"{'是' if r['on_beat'] else '否'} | {r['db']:.3f} | {r['err_db'] * 1000:+.1f} |")
+                 f"{'是' if r['on_beat'] else '否'} | {r['half']:.3f} | {r['err_half'] * 1000:+.1f} | "
+                 f"{'是' if r['on_half'] else '否'} | {r['db']:.3f} | {r['err_db'] * 1000:+.1f} |")
     if expected is not None:
         L.append("\n## 預期剪點 vs 偵測\n")
-        n_hit = sum(1 for r in exp_rows if r[3] == "命中")
-        n_chk = sum(1 for r in exp_rows if r[3] != "影片開頭（不算剪點）")
-        L.append(f"- 預期 {len(expected)} 個（可檢查 {n_chk} 個），命中 {n_hit} 個，未偵測到 {n_chk - n_hit} 個，"
-                 f"多出的偵測剪點 {extra} 個\n")
-        L.append("| 預期（歌曲秒） | 偵測到（歌曲秒） | 誤差 ms | 狀態 |")
-        L.append("|--:|--:|--:|:--|")
-        for te, nd, e, status in exp_rows:
-            L.append(f"| {te:.3f} | {nd:.3f} | {e * 1000:+.1f} | {status} |" if nd is not None else f"| {te:.3f} | – | – | {status} |")
+        n_hit = sum(1 for r in exp_rows if r[4] == "命中")
+        n_chk = sum(1 for r in exp_rows if r[4] != "影片開頭（不算剪點）")
+        L.append(f"- 預期 {len(expected)} 個（可檢查 {n_chk} 個），命中 {n_hit} 個"
+                 f"（{n_hit / n_chk * 100 if n_chk else 0:.0f}%），未偵測到 {n_chk - n_hit} 個，多出的偵測剪點 {extra} 個")
+        L.append("- 預期格秒 = " + ("offset + 格序/fps（cuts.json 的 rows.f，成片實際落的格；剪點表秒與它最多差半格，不算誤差）\n"
+                                 if quantized else "剪點表秒（未量化到格，誤差含最多半格 ±%.1f ms 的量化差）\n" % (fr * 500)))
+        L.append("| 剪點表秒 | 預期格秒 | 偵測到（歌曲秒） | 誤差 ms | 狀態 |")
+        L.append("|--:|--:|--:|--:|:--|")
+        for tc, te, nd, e, status in exp_rows:
+            L.append(f"| {tc:.3f} | {te:.3f} | {nd:.3f} | {e * 1000:+.1f} | {status} |" if nd is not None
+                     else f"| {tc:.3f} | {te:.3f} | – | – | {status} |")
     L.append("\n## 亮度\n")
     L.append(f"- 黑場（YAVG ≤ 16 連續 ≥ 0.5 秒）：{len(black_runs)} 段" +
              ("：" + "、".join(f"{s:.2f}–{e:.2f}s" for s, e in black_runs) if black_runs else ""))
@@ -278,12 +318,13 @@ def main():
     with open(report, "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
 
-    print(f"剪點偵測：{method}  偵測到 {n_cut} 個，±1 格內 {n_on}（{n_on / n_cut * 100 if n_cut else 0:.0f}%），"
+    print(f"剪點偵測：{method}  偵測到 {n_cut} 個，整拍 ±1 格內 {n_on}（{pct(n_on)}），半拍 ±1 格內 {n_on_half}（{pct(n_on_half)}），"
           f"平均絕對誤差 {mae:.1f} ms")
     if expected is not None:
-        n_hit = sum(1 for r in exp_rows if r[3] == "命中")
-        n_chk = sum(1 for r in exp_rows if r[3] != "影片開頭（不算剪點）")
-        print(f"預期剪點 {len(expected)} 個：命中 {n_hit}，未偵測到 {n_chk - n_hit}（門檻 {thr}；同鏡頭子剪可能偵測不到），多出 {extra}")
+        n_hit = sum(1 for r in exp_rows if r[4] == "命中")
+        n_chk = sum(1 for r in exp_rows if r[4] != "影片開頭（不算剪點）")
+        print(f"預期剪點 {len(expected)} 個：命中 {n_hit}（{n_hit / n_chk * 100 if n_chk else 0:.0f}%，以此為準），"
+              f"未偵測到 {n_chk - n_hit}（門檻 {thr}；同鏡頭子剪可能偵測不到），多出 {extra}")
     print(f"黑場 {len(black_runs)} 段  閃白 {len(flash_runs)} 次  拼圖 {len(sheets)} 張")
     print(report)
 

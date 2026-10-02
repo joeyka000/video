@@ -24,15 +24,13 @@
 
 ### 1. 聽歌拆結構
 這一步全部靠程式輸出判斷，不靠耳朵（執行流程的是 Claude，聽不到聲音；需要人耳的只有最後「給我確認」那一點）。
-- 先量 BPM（實測 120 BPM 的測試歌印 117.45）：
-```bash
-/root/video-lab/.venv/bin/python -c "import librosa;y,sr=librosa.load('song.wav',sr=22050,mono=True);print(float(librosa.feature.tempo(y=y,sr=sr)[0]))"
-```
-  四捨五入到整數；流行與舞曲常見的是 90／96／100／110／120／128／140。初估差 2 倍或 1/2 倍是常事（慢歌量成雙倍、快歌量成一半），拿不準就兩個候選各跑一次 analyze.py，看哪個的「kick 殘差 sd」小、拍數對得上歌長。
-- 跑 analyze.py，`--sections` 依這首歌寫完整的段落清單，不留省略號（寫 `...` 會被拒絕）：
-  `python scripts/analyze.py song.mp3 -o data/audio.json --bpm 120 --sections "intro:0,verse1:4,chorus1:12,verse2:20,chorus2:28"`
-  數字是小節序（bar 0 = 第一個 downbeat）；還不知道段落在哪就先不給 `--sections`，看印出的自動分段 S1、S2… 與下面的每小節表，手標後重跑。核對印出的數字：拍數 ≈ 歌長 × BPM ÷ 60（實測 33.5 秒 × 120 ÷ 60 ≈ 67，印出「拍數 67」）、小節數 ≈ 拍數 ÷ 4、「kick 殘差 sd」在幾毫秒內；差很多就是 BPM 錯了，換另一個候選重跑。
-  - `analyze.py` 一律帶 `--bpm`，值用上面的 librosa 先量再四捨五入：不帶時它在 `pick_downbeat_phase` 以 `ValueError: could not broadcast input array` 崩潰，什麼都不印（實測 120 BPM 測試歌，有無 `--sections` 都崩；給 `--bpm 120` 就過）。
+- 跑 analyze.py，先不帶 `--bpm`（與 `SKILL.md` C 段第 1 步同一套流程），`--sections` 依這首歌寫完整的段落清單，不留省略號（寫 `...` 會被拒絕）：
+  `python scripts/analyze.py song.mp3 -o data/audio.json --sections "intro:0,verse1:4,chorus1:12,verse2:20,chorus2:28"`
+  數字是小節序（bar 0 = 第一個 downbeat）；還不知道段落在哪就先不給 `--sections`，看印出的自動分段 S1、S2… 與下面的每小節表，手標後重跑。
+- 核對印出的摘要（不帶 `--bpm` 時它自己估 tempo，再用 kick 回歸修正；實測 120 BPM、25.5 秒的測試歌印「tempo 119.999 BPM（初估 120.2）… kick 殘差 sd 0.6 ms … 拍數 51」）：
+  - 拍數 ≈ 歌長 × BPM ÷ 60（25.5 × 120 ÷ 60 ≈ 51）、小節數 ≈ 拍數 ÷ 4、「kick 殘差 sd」在幾毫秒內。
+  - tempo 四捨五入後要像一首歌的速度：流行與舞曲常見的是 90／96／100／110／120／128／140。估成 2 倍或 1/2 倍是常事（慢歌估成雙倍、快歌估成一半）：印出的 tempo 與點頭的速度差一倍、或拍數對不上歌長，才用 `--bpm N` 覆寫重跑（`--bpm` 只固定 tempo，第一拍、downbeat 相位與段落照舊算；實測印「tempo 120.000 BPM（初估 120.0，--bpm 固定）」）。
+  - 倍數錯誤只能靠拍數與人耳分辨，「kick 殘差 sd」分不出來：實測同一首歌 `--bpm 60` 印拍數 26、`--bpm 120` 印拍數 51，殘差 sd 都是 0.6 ms。
 - 校對第一拍：鼓進來的第一個 kick 必須落在拍格上，而且通常是某小節的第一拍。前奏沒鼓時 `onsets.kick[0]` 不等於 `downbeats[0]`，這是正常的（實測測試歌：kick[0] = 8.493 秒，落在 bar 4 beat 1，離拍點 0 ms；downbeats[0] = 0.493 秒）：
 ```bash
 /root/video-lab/.venv/bin/python - <<'EOF'

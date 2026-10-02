@@ -1,9 +1,10 @@
 # 日系動漫剪輯元素與風格
 
 做動漫風片頭、MV、MAD、紀錄片的日系段落時讀這份。
-- 程式動畫效果：`assets/anime-fx.js`（`AFX.*`，全部是 t 的純函數）
+- 程式動畫效果：`assets/anime-fx.js`（`AFX.*`，全部是 t 的純函式）
 - 示範頁：`assets/anime-demo.html`，用 `scripts/render.py` 輸出
 - 實拍素材：用下面的 ffmpeg 做法（都實測過）
+- 本文保留日文術語原文（画面動、セル画調、作画MAD、10か条），其中的日文漢字 `画`／`条` 會被 OpenCC s2twp 檢查誤報成簡體；檢查本文時排除含這些詞的列：`/root/video-lab/.venv/bin/python -c "import opencc,re,sys; c=opencc.OpenCC('s2twp'); s='\n'.join(l for l in open(sys.argv[1]).read().split('\n') if not re.search('画面動|セル画|作画|か条', l)); print('OK' if c.convert(s)==s else 'HAS_SIMPLIFIED')" references/anime.md`
 
 ## 一、演出手法（術語對照）
 
@@ -86,7 +87,7 @@ ffmpeg -i in.mp4 -c:v libvpx-vp9 -i out/fx.webm -filter_complex "[0][1]overlay" 
 | 出崎統式抒情 | 止め絵、3回PAN、透過光、畫面分割 | 厚重陰影、夕陽色 | `AFX.sanKaiPan`、〈實拍 2〉 |
 | 迷幻 MAD | 每拍換鏡、白閃、撕裂色偏、萬花筒、hue-rotate、每小節大字 | 彩虹漸層、difference 疊加 | awesome 庫 `pound75423-464968`（規格寫得最完整） |
 | 手遊結算演出 | 蓄力、爆發、衝擊波、卡片飛出、數字滾動 | 依稀有度換色（綠→藍→紫→金） | awesome 庫 `op7418-814408` |
-| 漫畫分鏡 | 網點、分格、對話框、擬音字 | 黑白加單一點綴色 | `AFX.screentone`、`AFX.slam` |
+| 漫畫分鏡 | 網點、分格、對話方塊、擬音字 | 黑白加單一點綴色 | `AFX.screentone`、`AFX.slam` |
 
 ## 四、參考素材位置
 
@@ -101,7 +102,7 @@ ffmpeg -i in.mp4 -c:v libvpx-vp9 -i out/fx.webm -filter_complex "[0][1]overlay" 
 ## 五、授權與分寸
 
 - 字型只用 OFL：Noto Sans TC、Noto Serif TC（已裝，明朝體用 Serif）
-- **風格可以參考，角色、Logo、作品名、招牌台詞不可照搬**（例如不要用 NERV 標誌、EVA 片名字樣）
+- **風格可以參考，角色、Logo、作品名、招牌臺詞不可照搬**（例如不要用 NERV 標誌、EVA 片名字樣）
 - 動畫原片剪成 MAD 屬二次創作，版權在原權利人；客戶案只用原創或已授權素材
 - 擬音字、日文標題用在繁中影片時，確認觀眾看得懂；必要時加中文副標
 

@@ -10,11 +10,13 @@
 //   window.render = t => tl.render(ctx, t); window.CUTS = tl.cuts; window.TRANSITIONS = tl.transitions;
 // 慣例：
 //   錯誤與提示：render.py 只轉印 console.error 與 pageerror（console.warn 看不到），所以本檔所有「找不到／不認得」的提示
-//     （MV.line 查不到歌詞、緩動名稱打錯）都用 console.error、每種只印一次；audio.json／lyrics.json 形狀不對（陣列、沒有 beats／tempo、
-//     沒有 lines）時 setData 直接 throw，不靜默退回等拍格——render.py 會以 pageerror 非 0 結束，拍點全錯的片不會「成功」產出。
+//     （MV.line 查不到歌詞或 lyrics 沒載入、緩動名稱打錯、timeline 的轉場名稱打錯）都用 console.error、每種只印一次；
+//     audio.json／lyrics.json 形狀不對（陣列、沒有 beats／tempo、沒有 lines）時 setData 直接 throw，setGrid 的 bpm／duration／meter
+//     不是正數也 throw，不靜默退回等拍格——render.py 會以 pageerror 非 0 結束，拍點全錯的片不會「成功」產出。
 //     要寬鬆就自己 try／catch 後改呼叫 MV.setGrid
 //   MV.audio：setData／setGrid 之前第一次讀取就自動建立 120 BPM、4/4、60 秒的等拍格，不會是 null；節拍函式同樣
 //   緩動：MV.keys、MV.prog 收函式（MV.ease.outCubic）或 MV.ease 的名稱字串（'outCubic'）；不認得的字串退回預設並警告一次
+//   轉場：MV.timeline 的 transition 只認 cut crossfade flash wipe invert whip zoom（區分大小寫）；不認得的名稱退回 cut（overlap 0）並警告一次
 //   tracking：單位是 px；要用 em 寫 size * 0.08，或改傳 trackingEm: 0.08（layout／karaoke 會乘上字級）。fitSize 的第 6 個引數
 //     接同一個 tracking（數字或 px => px），算出來的字級才真的塞得進 maxW
 //   MV.fps：預設 window.RENDER_FPS（render.py --fps 注入）或 30；frameIdx 的預設格率、post 的顆粒換圖、timeline 都用它。
@@ -181,7 +183,10 @@
   }
   // 沒有 audio.json 時用等拍格：bpm、拍號 meter、長度 duration、第一拍時間 firstBeat；回傳產生的 audio 物件
   function setGrid(o = {}) {
-    const bpm = o.bpm ?? 120, meter = o.meter ?? 4, duration = o.duration ?? 60, first = o.firstBeat ?? 0, per = 60 / bpm;
+    const bpm = +(o.bpm ?? 120), meter = +(o.meter ?? 4), duration = +(o.duration ?? 60), first = +(o.firstBeat ?? 0), per = 60 / bpm;
+    // 與 setData 同樣直接 throw：bpm 0／負數／NaN 會產生 0 個拍點、之後 beatAt 全回 NaN，靜默接受只會做出拍點全錯的片
+    if (!(bpm > 0) || !(duration > 0) || !(meter >= 1) || !Number.isFinite(first))
+      throw new Error(`MV.setGrid：bpm／duration／meter 必須是正數（meter ≥ 1），firstBeat 必須是數字；拿到 bpm=${o.bpm} duration=${o.duration} meter=${o.meter} firstBeat=${o.firstBeat}`);
     const beats = [], downbeats = [];
     for (let i = 0; first + i * per <= duration + 1e-6; i++) {
       const t = +(first + i * per).toFixed(6);
@@ -194,7 +199,9 @@
   function normLyrics(l) {
     const lines = (l.lines || []).map((ln, i) => {
       const words = (ln.words || []).map(w => ({ w: String(w.w ?? w.word ?? ''), start: +w.start, end: +w.end }));
-      const text = ln.text != null ? String(ln.text) : words.map(w => w.w).join('');
+      // text 省略時由 words 補：相鄰兩個 word 都是 ASCII 字母／數字（英文）就用空格接，中文直接相連；ci 之後照 text 重算，兩者一致
+      const text = ln.text != null ? String(ln.text)
+        : words.reduce((acc, w) => acc + (acc && /[A-Za-z0-9]$/.test(acc) && /^[A-Za-z0-9]/.test(w.w) ? ' ' : '') + w.w, '');
       const start = ln.start != null ? +ln.start : (words[0]?.start ?? 0);
       const end = ln.end != null ? +ln.end : (words[words.length - 1]?.end ?? start);
       const chars = Array.from(text), lower = chars.map(ch => ch.toLowerCase());
@@ -294,8 +301,10 @@
   const fold = s => String(s).toLowerCase().replace(/\s+/g, '');
   // 用內容找歌詞行（不寫死時間）：MV.line('雨點') → 第一個含「雨點」的行；nth 取第幾個（0 起）
   // 找不到回 null 並警告一次：完全沒有這句、或有這句但 nth 超出命中數，兩種訊息分開
+  // lyrics 根本沒載入時（setData 沒給 lyrics、render.py 沒帶 --data lyrics=…）訊息另外分開，不會誤導人去改查詢字串
   function line(query, nth = 0) {
-    const q = fold(query), hits = (D.lyrics?.lines || []).filter(l => fold(l.text).includes(q));
+    if (!D.lyrics) { warnOnce('line:nolyrics', `MV.line：尚未載入 lyrics（setData 沒給 lyrics，或 render.py 沒帶 --data lyrics=…），查「${query}」回 null`); return null; }
+    const q = fold(query), hits = D.lyrics.lines.filter(l => fold(l.text).includes(q));
     const l = hits[nth] || null;
     if (!l) warnOnce(`line:${q}#${nth}`, hits.length === 0
       ? `MV.line：找不到歌詞「${query}」`
@@ -418,7 +427,7 @@
       if (e.alpha != null) ctx.globalAlpha *= clamp(e.alpha);
       ctx.translate(x0 + g.x + g.w / 2 + (e.dx || 0), (o.y ?? 0) + (e.dy || 0));
       if (e.rot) ctx.rotate(e.rot);
-      if (e.scale != null) ctx.scale(e.scale, e.scale);
+      if (e.scale != null || e.sx != null || e.sy != null) ctx.scale((e.sx ?? e.scale ?? 1), (e.sy ?? e.scale ?? 1));   // 與 drawGlyphs 的未唱層同一套，兩層才對得上
       ctx.beginPath(); ctx.rect(-g.w / 2 - 2, top, (g.w + 4) * p, hgt); ctx.clip();
       ctx.fillStyle = sung; ctx.fillText(g.ch, -g.w / 2, 0);
       ctx.restore();
@@ -426,7 +435,8 @@
     ctx.restore();
     return { layout: lay, lit, size, x0 };
   }
-  // 安全區 [x, y, w, h]：pct 0.9 = 動作安全、0.8 = 字幕安全；標題與字幕不要超出
+  // 安全區 [x, y, w, h]（SMPTE 廣播慣例）：pct 0.93 = 動作安全（action safe）、0.9 = 標題／字幕安全（title safe）；預設 0.9 是標題安全，
+  // 標題與字幕不要超出；有 letterbox 時以有效畫面的高度算再往下移 bar（見 references/craft.md〈安全區與平臺遮擋區〉）
   const safeArea = (W, H, pct = 0.9) => { const w = W * pct, h = H * pct; return [(W - w) / 2, (H - h) / 2, w, h]; };
 
   // ================================================================ 後製
@@ -508,15 +518,20 @@
   }
 
   // ================================================================ 時間軸
-  const DEF_OVERLAP = { cut: 0, crossfade: 0.5, wipe: 0.4, zoom: 0.5, whip: 0.25, flash: 0.12, invert: 0.1 };
+  // 鍵的順序就是錯名訊息列出的順序，與 timeline 註解一致
+  const DEF_OVERLAP = { cut: 0, crossfade: 0.5, flash: 0.12, wipe: 0.4, invert: 0.1, whip: 0.25, zoom: 0.5 };
   const PRE = { crossfade: 1, wipe: 1, zoom: 1, whip: 1 };     // 在 start 之前完成、新畫面於 start 這一拍落定的轉場
-  // 兩組後製覆寫依 u 混合（轉場中用）
-  function mixOv(a, b, u) {
+  // 兩組後製覆寫依 u 混合（轉場中用）；aspect = W / H
+  //   數字型欄位缺的一方預設 0，zoom 預設 1；letterbox 缺值或 ≤ 0（關）預設 aspect：直接從 0 lerp 到 2.39 會先經過 1.1 之類比畫布還窄的比例
+  //   （黑邊算成負數→0），黑邊會在轉場結束那格突然跳出；從 aspect 起 lerp 則黑邊從 0 漸進長到目標值
+  function mixOv(a, b, u, aspect = 16 / 9) {
     const out = {};
+    const dflt = k => (k === 'zoom' ? 1 : k === 'letterbox' ? aspect : 0);
     for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      const x = a[k], y = b[k];
+      let x = a[k], y = b[k];
+      if (k === 'letterbox') { x = x > 0 ? x : undefined; y = y > 0 ? y : undefined; }
       if (Array.isArray(x) || Array.isArray(y)) out[k] = [lerp(x?.[0] ?? 0, y?.[0] ?? 0, u), lerp(x?.[1] ?? 0, y?.[1] ?? 0, u)];
-      else if (typeof x === 'number' || typeof y === 'number') out[k] = lerp(x ?? (k === 'zoom' ? 1 : 0), y ?? (k === 'zoom' ? 1 : 0), u);
+      else if (typeof x === 'number' || typeof y === 'number') out[k] = lerp(x ?? dflt(k), y ?? dflt(k), u);
       else out[k] = u < 0.5 ? x : y;
     }
     return out;
@@ -544,7 +559,8 @@
     else at(Bcv);
   }
   // 剪接時間軸：entries = [{id, start, end, render(ctx, f), transition?, overlap?}]；opts {W, H, scale, post}
-  //   transition：'cut'（預設）|'crossfade'|'flash'|'wipe'|'invert'|'whip'|'zoom'；overlap 秒（省略用預設）
+  //   transition：'cut'（預設）|'crossfade'|'flash'|'wipe'|'invert'|'whip'|'zoom'（區分大小寫）；overlap 秒（省略用預設）
+  //     名稱不認得（'crossfad'、'Flash'）：console.error 一次、退回 'cut'（overlap 0），transitions[].kind 也記 'cut'——不會靜默變硬切
   //   crossfade／wipe／whip／zoom 在 start 前 overlap 秒開始、在 start 落定；flash／invert 從 start 開始並在 overlap 內衰減
   //   f = {t, lt, p, beat, bar, beatPhase, barPhase, W, H, a:{rms,low,mid,high,kick,snare,hat}, entry, i}
   //   scene 的 render 可回傳後製覆寫 {shake:[x,y], zoom, flash, invert, fade, grain, vignette, halation, tint, letterbox}
@@ -557,8 +573,12 @@
   function timeline(entries, o = {}) {
     const W = o.W ?? 1920, H = o.H ?? 1080, S = o.scale ?? 1;
     const list = entries.slice().sort((a, b) => a.start - b.start).map((e, i) => {
-      const transition = e.transition || 'cut';
-      return { ...e, i, transition, overlap: transition === 'cut' ? 0 : (e.overlap ?? DEF_OVERLAP[transition] ?? 0.3) };
+      let transition = e.transition || 'cut';
+      if (!Object.prototype.hasOwnProperty.call(DEF_OVERLAP, transition)) {
+        warnOnce('transition:' + transition, `MV.timeline：沒有這個轉場「${transition}」（entry ${e.id ?? i}），可用：${Object.keys(DEF_OVERLAP).join(' ')}；已退回 cut`);
+        transition = 'cut';
+      }
+      return { ...e, i, transition, overlap: transition === 'cut' ? 0 : (e.overlap ?? DEF_OVERLAP[transition]) };
     });
     const cuts = list.slice(1).map(e => e.start);
     const transitions = list.slice(1).map(e => ({
@@ -601,7 +621,7 @@
       if (next && PRE[next.transition] && t >= next.start - next.overlap) {
         const u = clamp((t - (next.start - next.overlap)) / next.overlap);
         const ovA = draw(cur, t, cvA), ovB = draw(next, t, cvB);
-        ov = mixOv(ovA, ovB, u);
+        ov = mixOv(ovA, ovB, u, W / H);
         place(ov); compose(ctx, next.transition, u, cvA, cvB, W, H);
       } else {
         ov = draw(cur, t, cvB);
