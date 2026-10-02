@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>mv-template</title>
+<!--
+mv-template.html — 一支 MV 的骨架與示範（Canvas 2D，1920×1080，畫面是 t 的純函數）
+
+怎麼換成自己的歌
+1. 把 analyze.py 產的 data/audio.json、align.py 產的 data/lyrics.json、歌曲 data/song.mp3 放在本檔旁的 data/ 目錄
+   資料載入順序：window.DATA（render.py --data 注入）→ fetch ./data/audio.json 與 ./data/lyrics.json（用 http 伺服器開才抓得到）
+   → 都沒有就用檔尾 demoData() 的內建示範（120 BPM 等拍格、32 小節、4 行示範歌詞），直接雙擊開檔或用舊版 render.py 也能跑
+2. 改檔頭的色票 C、曲名 SONG；段落邊界 BAR 用小節序（看 analyze.py 印的段落表），不寫死秒數
+   歌詞行用 MV.line('內容') 找，不寫死時間；換歌後把 verse／chorus 兩個 plate 裡的查詢字串改掉即可
+
+怎麼預覽（瀏覽器）
+   在本目錄：python3 -m http.server 8000 → 開 http://localhost:8000/mv-template.html
+   space 播放／暫停、←／→ ±1 秒、shift+←／→ ±5 秒、, 與 . 逐格、[ 與 ] 上一個／下一個剪點、h 隱藏 HUD
+   有 ./data/song.mp3 時用 <audio> 當時鐘（有聲音），否則用 performance.now 當時鐘；時鐘只決定 t，畫面全由 render(t) 決定
+   render.py（headless）模式下不會出現 HUD 與鍵盤控制
+
+怎麼輸出（參數以 scripts/render.py 為準）
+   預覽拼圖：python scripts/render.py mv-template.html -o out/sheet.png --sheet 1,2.3,6.5,12.4
+   正式輸出：python scripts/render.py mv-template.html -o out/mv.mp4 --fps 30 \
+             --data audio=data/audio.json --data lyrics=data/lyrics.json --audio data/song.mp3
+   4K：加 --scale 2（頁面仍以 1920×1080 版面）；動態模糊：加 --samples 8 --shutter 0.5；剪點拼圖：--cuts（讀 window.CUTS）
+   本頁定義 window.render(t)（同步完成）、window.DURATION（秒）、window.CUTS（剪點秒數陣列）
+
+段落（示範，全部原創內容）
+   title  開場字卡：大字 kerning 排版在 downbeat 砸入，副標與等寬標註逐拍出現
+   verse  歌詞騎在 env 驅動的曲線上逐字亮字（沒有 env 資料時用拍相位當能量）
+   chorus 每個 kick 一個全幅單字 slam＋shake＋flash，每個 snare 換版面；進場用 whip 轉場
+   paper  反轉版面（紙底墨線）的表單段：等寬標註、逐拍畫線、蓋章；進場用 invert 轉場
+   outro  母題收束（雨線→一條橫線）、顆粒淡出、淡黑
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.7778vh; }
+  #hud { position: fixed; left: 16px; bottom: 14px; font: 500 14px/1.6 "Noto Sans Mono CJK TC", "Liberation Mono", monospace;
+         color: #eee; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 4px; white-space: pre; pointer-events: none; }
+  #hud.hidden { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script src="mv-kit.js"></script>
+<script>
+'use strict';
+// ================================================================ 檔頭：色票、字型、曲目
+const W = 1920, H = 1080;
+// 色票：主色（強調、蓋章）、輔色（雨線、曲線）、中性（標註、未唱字）、稀有強調（一支片只用在一兩處）、底色兩種
+const C = { main: '#E8572A', sub: '#7FA6C9', neutral: '#8B9096', rare: '#F2C94C', ink: '#0F1216', paper: '#EFE8DB' };
+// 字型：只用 OFL 字型；用整串 fallback，別名沒設到時仍能落到 CJK 字型
+const F = {
+  sans: (px, w = 900) => MV.font('"Noto Sans TC", "Noto Sans CJK TC", sans-serif', px, w),
+  serif: (px, w = 900) => MV.font('"Noto Serif TC", "Noto Serif CJK TC", serif', px, w),
+  mono: (px, w = 500) => MV.font('"Noto Sans Mono CJK TC", "Liberation Mono", monospace', px, w),
+};
+const SONG = { title: '北回歸線的雨', artist: '白晝信號', take: 'TAKE 03', year: '2026' };
+// 段落邊界（小節序；bar 0 = 第一個 downbeat）。換歌時照 analyze.py 的段落表改這裡
+const BAR = { title: 0, verse: 4, chorus: 12, paper: 20, outro: 26, end: 32 };
+
+// ================================================================ 共用小工具（全部是 t 的純函數）
+const { clamp, lerp, prog, ease, pulse, hash, frameIdx, smoothstep } = MV;
+const bg = (c, col) => { c.fillStyle = col; c.fillRect(0, 0, W, H); };
+// 等寬標註：小字、字距寬；o.align 左右、o.typed 給秒數時逐字打出（每 2 格一字）
+function mono(c, text, x, y, o = {}) {
+  const size = o.size ?? 22;
+  const lay = MV.layout(c, text, { font: F.mono(size, o.weight ?? 500), size, tracking: o.tracking ?? size * 0.12 });
+  const n = o.typed == null ? Infinity : Math.max(0, Math.floor((frameIdx(o.t ?? 0, 30) - frameIdx(o.typed, 30)) / 2));
+  MV.drawGlyphs(c, lay, x, y, { align: o.align || 'left', fill: o.color || C.neutral, alpha: o.alpha ?? 1, baseline: o.baseline,
+    each: (g, i) => (i < n ? {} : null) });
+  return lay;
+}
+// 角落對位記號（母題之一：片頭、紙底、尾奏都出現）
+function cornerMarks(c, col, alpha = 1, inset = 72, len = 26) {
+  c.save(); c.strokeStyle = col; c.globalAlpha = alpha; c.lineWidth = 2;
+  for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const x = sx > 0 ? inset : W - inset, y = sy > 0 ? inset : H - inset;
+    c.beginPath(); c.moveTo(x, y + sy * len); c.lineTo(x, y); c.lineTo(x + sx * len, y); c.stroke();
+  }
+  c.restore();
+}
+// 雨線母題：每條線的 x、長度、速度由 hash 固定，位置由 t 決定；speed 0 時停住、straight 1 時全部躺平成一條橫線
+function rain(c, t, o = {}) {
+  const n = o.n ?? 110, speed = o.speed ?? 1, straight = o.straight ?? 0, yLine = o.yLine ?? H * 0.52;
+  c.save(); c.fillStyle = o.color || C.sub; c.globalAlpha = o.alpha ?? 0.4;
+  for (let i = 0; i < n; i++) {
+    const x = hash(i, 1) * W, len = 50 + hash(i, 2) * 190, v = 260 + hash(i, 3) * 420;
+    const y0 = ((t * v * speed + hash(i, 4) * (H + len) * 3) % (H + len)) - len;
+    const y = lerp(y0, yLine, straight), h = lerp(len, 1.5, straight), w = lerp(1.5, len * 0.6, straight);
+    c.globalAlpha = (o.alpha ?? 0.4) * (0.35 + 0.65 * hash(i, 5));
+    c.fillRect(x - w / 2 + 0.75, y, w, h);
+  }
+  c.restore();
+}
+// 能量 0..1：有包絡線資料用 rms，否則用拍相位做脈衝（示範資料也會動）
+const hasEnv = () => !!(MV.audio.env.rms && MV.audio.env.rms.length);
+const energy = f => (hasEnv() ? f.a.rms : 0.15 + 0.85 * Math.pow(0.5, f.beatPhase / 0.3));
+// 最近一次 kick 的時間：有 onset 用 onset，否則每拍都是 kick
+function lastKick(t) {
+  const k = MV.audio.onsets.kick;
+  if (k && k.length) { let lo = 0, hi = k.length; while (lo < hi) { const m = (lo + hi) >> 1; if (k[m] <= t) lo = m + 1; else hi = m; } return lo ? k[lo - 1] : -1; }
+  return MV.timeOfBeat(Math.floor(MV.beatAt(t)));
+}
+const kickPulse = f => (MV.audio.onsets.kick?.length ? f.a.kick : pulse(f.t, lastKick(f.t), 0.12));
+// 從 t0 起算的 snare 次數：有 onset 用 onset，否則每小節第 2、4 拍
+function snareCount(t, t0) {
+  const s = MV.audio.onsets.snare;
+  if (s && s.length) return s.filter(x => x >= t0 && x <= t).length;
+  let n = 0;
+  for (let b = Math.ceil(MV.beatAt(t0)); b <= Math.floor(MV.beatAt(t)); b++) if (b % 4 === 1 || b % 4 === 3) n++;
+  return n;
+}
+const timecode = t => { const f = frameIdx(t, 30), s = Math.floor(f / 30); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}:${String(f % 30).padStart(2, '0')}`; };
+const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
+// 畫面抖動向量：幅度 amp，方向每格換一次
+const shakeVec = (t, amp) => { const fi = frameIdx(t, 30); return [(hash(fi, 11) - 0.5) * 2 * amp, (hash(fi, 12) - 0.5) * 2 * amp]; };
+const lineOr = (q, i) => MV.line(q) || (MV.lyrics && MV.lyrics.lines[i]) || null;
+
+// ================================================================ plate 1：開場字卡
+function plateTitle(c, f) {
+  const t0 = f.entry.start, tSlam = MV.timeOfBar(BAR.title + 1), tSub = MV.timeOfBar(BAR.title + 2), tRule = MV.timeOfBar(BAR.title + 3);
+  bg(c, C.ink);
+  rain(c, f.t, { alpha: 0.38 });
+  cornerMarks(c, C.neutral, 0.7);
+  // 左上：REC 燈＋時碼，開頭逐字打出；燈號每 15 格閃一次
+  const on = frameIdx(f.t, 30) % 30 < 18;
+  c.fillStyle = C.main; c.globalAlpha = on ? 1 : 0.25; c.beginPath(); c.arc(112, 103, 7, 0, MV.TAU); c.fill(); c.globalAlpha = 1;
+  mono(c, `REC  TC ${timecode(f.t)}`, 134, 110, { t: f.t, typed: t0 + 0.1, size: 22 });
+  mono(c, `${MV.audio.tempo} BPM   ${MV.audio.meter}/4   ${pad2(BAR.end)} BARS`, W - 100, 110, { align: 'right', t: f.t, typed: t0 + 0.5, size: 22 });
+  // 標題：逐字砸入（outBack 從 1.6 倍縮到 1），每字晚 1 格；主色錯位影子先落
+  const title = SONG.title, size = Math.floor(MV.fitSize(c, title, 1360, 232, F.serif));
+  const lay = MV.layout(c, title, { font: F.serif, size, tracking: size * 0.04 });
+  const tx = 160, ty = 600;
+  // bar 0 數拍：每拍在橫線位置多一個小方塊（1 2 3 4），標題砸下時被取代——先鋪節奏再給重擊
+  if (f.t < tSlam) {
+    const n = Math.floor(f.beat - MV.beatAt(t0)) + 1;
+    for (let i = 0; i < Math.min(4, n); i++) {
+      const tb = MV.timeOfBeat(MV.beatAt(t0) + i), u = prog(f.t, tb, tb + 0.12, ease.outCubic);
+      c.fillStyle = i === n - 1 ? C.main : C.neutral; c.globalAlpha = i === n - 1 ? 1 : 0.5;
+      c.fillRect(tx + i * 34, ty + 36 + (1 - u) * 10, 18, 18 * u);
+    }
+    c.globalAlpha = 1;
+    mono(c, 'COUNT IN', tx + 150, ty + 52, { size: 16, alpha: 0.6 * prog(f.t, t0, t0 + 0.3) });
+  }
+  if (f.t >= tSlam) {
+    const each = (g, i) => { const u = prog(f.t, tSlam + i * 0.033, tSlam + i * 0.033 + 0.24, ease.outBack); return { scale: lerp(1.6, 1, u), alpha: clamp(u * 4) }; };
+    c.save(); c.globalAlpha = 0.9;
+    MV.drawGlyphs(c, lay, tx + 7, ty + 7, { fill: C.main, each: (g, i) => { const e = each(g, i); return { ...e, alpha: e.alpha * prog(f.t, tSlam + 0.08, tSlam + 0.3) }; } });
+    c.restore();
+    MV.drawGlyphs(c, lay, tx, ty, { fill: C.paper, each });
+  }
+  // 橫線（母題）：bar 3 從左畫到標題右緣；末端一個主色方塊
+  if (f.t >= tRule) {
+    const u = prog(f.t, tRule, tRule + 0.7, ease.outExpo), w = lay.width * u;
+    c.fillStyle = C.paper; c.fillRect(tx, ty + 44, w, 2);
+    c.fillStyle = C.main; c.fillRect(tx + w - 9, ty + 36, 18, 18);
+  }
+  // 副標：bar 2 從下方滑上；右側等寬資訊逐拍出現
+  if (f.t >= tSub) {
+    const u = prog(f.t, tSub, tSub + 0.45, ease.outCubic);
+    c.save(); c.globalAlpha = u;
+    const sub = MV.layout(c, `${SONG.artist}　首張單曲`, { font: px => F.sans(px, 500), size: 40, tracking: 6 });
+    MV.drawGlyphs(c, sub, tx + 4, ty + 112 + (1 - u) * 28, { fill: C.paper, alpha: 0.9 });
+    c.restore();
+    const info = [SONG.take, 'MIX 02', SONG.year];
+    info.forEach((s, i) => { const tb = MV.timeOfBeat(MV.beatAt(tSub) + i + 1); if (f.t >= tb) mono(c, s, tx + lay.width, ty + 92 + i * 30, { align: 'right', size: 20, alpha: prog(f.t, tb, tb + 0.2) }); });
+  }
+  return { shake: shakeVec(f.t, 16 * pulse(f.t, tSlam, 0.09)), flash: 0.5 * pulse(f.t, tSlam, 0.05) };
+}
+
+// ================================================================ plate 2：歌詞騎在 env 曲線上
+function plateVerse(c, f) {
+  bg(c, C.ink);
+  const E = energy(f), cy = H * 0.5, amp = 26 + 150 * E;
+  const curve = x => cy + amp * Math.sin(x * 0.0042 + f.t * 1.35) + amp * 0.45 * MV.noise1(x * 0.0017 + f.t * 0.35, 7);
+  // 底：靜止的水平基準線與刻度（本小節 4 拍，當前拍較亮）
+  c.save(); c.strokeStyle = C.neutral; c.globalAlpha = 0.22; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(160, cy); c.lineTo(W - 160, cy); c.stroke();
+  const beatIn = Math.floor(f.beat) % MV.audio.meter;
+  for (let i = 0; i < MV.audio.meter; i++) { const x = lerp(160, W - 160, (i + 0.5) / MV.audio.meter); c.globalAlpha = i === beatIn ? 0.9 : 0.25; c.fillStyle = i === beatIn ? C.paper : C.neutral; c.fillRect(x - 1, cy - 14, 2, 28); }
+  c.restore();
+  // 曲線本體（輔色）
+  c.save(); c.strokeStyle = C.sub; c.lineWidth = 2; c.globalAlpha = 0.55; c.beginPath();
+  for (let x = 0; x <= W; x += 12) (x ? c.lineTo : c.moveTo).call(c, x, curve(x));
+  c.stroke(); c.restore();
+  // 左側 VU：有包絡線資料時 rms／low／mid／high 四條；沒資料時只畫一條（拍相位脈衝）並標明
+  const vu = hasEnv() ? [['RMS', f.a.rms], ['LOW', f.a.low], ['MID', f.a.mid], ['HIGH', f.a.high]] : [['RMS', E]];
+  vu.forEach(([name, v], i) => {
+    const x = 160 + i * 40, hgt = 150 * clamp(v);
+    c.fillStyle = C.neutral; c.globalAlpha = 0.25; c.fillRect(x, H - 230 - 150, 16, 150);
+    c.fillStyle = C.sub; c.globalAlpha = 0.9; c.fillRect(x, H - 230 - hgt, 16, hgt); c.globalAlpha = 1;
+    mono(c, name, x + 8, H - 204, { size: 13, align: 'center', tracking: 1 });
+  });
+  if (!hasEnv()) mono(c, 'GRID · NO ENV', 160, H - 176, { size: 13, tracking: 1, alpha: 0.6 });
+  // 歌詞：每行在 start 前 0.6 秒淡入、end 後 0.8 秒淡出；字沿曲線排、切線方向旋轉；亮字用 lineCharProgress
+  const lines = (MV.lyrics && MV.lyrics.lines) || [];
+  let shown = 0, lit = 0;
+  for (const ln of lines) {
+    const a = MV.window01(f.t, ln.start - 0.6, ln.end + 0.8, 0.5, 0.6);
+    if (a <= 0 || f.t < f.entry.start - 0.5 || f.t >= f.entry.end) continue;
+    shown = ln.i + 1;
+    const size = 92, lay = MV.layout(c, ln.text, { font: px => F.serif(px, 700), size, tracking: size * 0.08 });
+    const x0 = W / 2 - lay.width / 2, p = MV.lineCharProgress(ln, f.t);
+    lit = p;
+    c.save(); c.font = lay.font; c.textAlign = 'left'; c.textBaseline = 'middle'; c.globalAlpha = a;
+    lay.glyphs.forEach((g, i) => {
+      const xg = x0 + g.x + g.w / 2, yg = curve(xg), ang = Math.atan2(curve(xg + 6) - curve(xg - 6), 12);
+      const lp = clamp(p - i), rise = (1 - prog(f.t, ln.start - 0.6, ln.start, ease.outCubic)) * 40;
+      c.save(); c.translate(xg, yg - 70 + rise); c.rotate(ang);
+      c.fillStyle = C.neutral; c.globalAlpha = a * 0.45; c.fillText(g.ch, -g.w / 2, 0);
+      if (lp > 0) { c.beginPath(); c.rect(-g.w / 2 - 2, -size * 0.7, (g.w + 4) * lp, size * 1.4); c.clip(); c.fillStyle = C.paper; c.globalAlpha = a; c.fillText(g.ch, -g.w / 2, 0); }
+      c.restore();
+      // 掃描點：正在亮的那個字的亮緣上一顆主色圓點
+      if (lp > 0 && lp < 1) { c.save(); c.translate(xg, yg - 70 + rise); c.rotate(ang); c.fillStyle = C.main; c.globalAlpha = a; c.beginPath(); c.arc(-g.w / 2 + (g.w + 4) * lp - 2, size * 0.62, 6, 0, MV.TAU); c.fill(); c.restore(); }
+    });
+    c.restore();
+  }
+  // 右下：行號與小節／拍
+  mono(c, `LINE ${pad2(shown)}/${pad2(lines.length)}`, W - 100, H - 128, { align: 'right', size: 20 });
+  mono(c, `BAR ${pad2(f.bar)} · ${Math.floor(f.beat) % MV.audio.meter + 1}/${MV.audio.meter}`, W - 100, H - 98, { align: 'right', size: 20 });
+  mono(c, 'VERSE', 160, 110, { size: 22, color: C.paper, alpha: 0.8 });
+  return { shake: [0, -4 * E] };
+}
+
+// ================================================================ plate 3：副歌 slam
+function plateChorus(c, f) {
+  const k = kickPulse(f), tk = lastKick(f.t), v = snareCount(f.t, f.entry.start) % 3;
+  const L3 = lineOr('回信', 2), L4 = lineOr('黎明', 3);
+  const ln = [L3, L4].find(l => l && f.t >= l.start - 0.1 && f.t < l.end + 0.5) || (f.t < (L4?.start ?? Infinity) ? L3 : L4);
+  // 這一拍要砸的字：正在唱的字；沒有就最後唱過的；都沒有用母題字「雨」
+  let ch = '雨';
+  if (ln) { const w = ln.words.find(w => f.t >= w.start && f.t < w.end) || [...ln.words].reverse().find(w => f.t >= w.start); if (w) ch = w.w; }
+  const fgs = [C.paper, C.ink, '#fff'], bgs = [C.ink, C.main, null];
+  if (v === 2) { bg(c, C.paper); c.fillStyle = C.ink; c.fillRect(W / 2, 0, W / 2, H); } else bg(c, bgs[v]);
+  // 砸字：每個 kick 從 1.45 倍縮到 1（outExpo），字高約畫面 78%；版面 2 用 difference 讓字跨越分割線時自動反白
+  const size = 760, s = lerp(1.45, 1, prog(f.t, tk, tk + 0.22, ease.outExpo));
+  const pos = [[W / 2, H / 2], [W * 0.62, H * 0.5], [W / 2, H * 0.5]][v];
+  c.save(); c.translate(pos[0], pos[1]); c.scale(s, s);
+  c.font = F.serif(size, 900); c.textAlign = 'center'; c.textBaseline = 'middle';
+  if (v === 2) c.globalCompositeOperation = 'difference';
+  c.fillStyle = fgs[v]; c.fillText(ch, 0, size * 0.02);
+  c.restore();
+  // 標註：段名、小節／拍、kick 計數；版面 1 用墨色；版面 2 跨越分割線，整組用 difference 畫，兩邊都讀得到
+  c.save();
+  if (v === 2) c.globalCompositeOperation = 'difference';
+  const lab = v === 1 ? C.ink : v === 2 ? '#9a9a9a' : C.neutral, strong = v === 1 ? C.ink : v === 2 ? '#fff' : C.paper;
+  mono(c, 'CHORUS', 160, 110, { size: 22, color: strong, alpha: 0.85 });
+  mono(c, `BAR ${pad2(f.bar)} · ${Math.floor(f.beat) % MV.audio.meter + 1}/${MV.audio.meter}`, 160, 140, { size: 20, color: lab });
+  mono(c, `KICK ${String(Math.max(0, Math.floor(MV.beatAt(f.t) - MV.beatAt(f.entry.start)) + 1)).padStart(3, '0')}`, W - 100, 110, { align: 'right', size: 20, color: lab });
+  mono(c, `LAYOUT ${String.fromCharCode(65 + v)}`, W - 100, 140, { align: 'right', size: 20, color: lab });
+  // 下方整行歌詞 karaoke（亮字永不超前）
+  if (ln) MV.karaoke(c, ln, f.t, { x: W / 2, y: H - 96, size: 38, font: px => F.sans(px, 700), align: 'center', maxW: 1400, tracking: 4,
+    sung: strong, unsung: v === 1 ? 'rgba(15,18,22,0.35)' : v === 2 ? 'rgba(255,255,255,0.4)' : 'rgba(139,144,150,0.55)' });
+  c.restore();
+  return { shake: shakeVec(f.t, 24 * k), flash: v === 1 ? 0 : 0.38 * k, zoom: 1 + 0.035 * k, halation: v === 0 ? 0.18 : 0 };
+}
+
+// ================================================================ plate 4：反轉版面（紙底墨線表單）
+function platePaper(c, f) {
+  const t0 = f.entry.start, b0 = MV.beatAt(t0), tStamp = MV.timeOfBar(BAR.paper + 3);
+  bg(c, C.paper);
+  cornerMarks(c, C.ink, 0.8);
+  const E = energy(f), curBeat = Math.floor(f.beat) % MV.audio.meter;
+  mono(c, 'FORM 04 · 紙底墨線', 160, 110, { size: 22, color: C.ink, alpha: 0.85 });
+  mono(c, `${SONG.take} · ${timecode(f.t)}`, W - 100, 110, { align: 'right', size: 20, color: C.ink, alpha: 0.7 });
+  // 拍點：4 個圓，當前拍填稀有色
+  for (let i = 0; i < MV.audio.meter; i++) {
+    c.beginPath(); c.arc(W - 100 - (MV.audio.meter - 1 - i) * 28, 142, 7, 0, MV.TAU);
+    if (i === curBeat) { c.fillStyle = C.rare; c.fill(); c.lineWidth = 1.5; c.strokeStyle = C.ink; c.stroke(); } else { c.lineWidth = 1.5; c.strokeStyle = C.ink; c.stroke(); }
+  }
+  // 表格：每一列在接下來的一拍出現（線由左向右畫出），值逐字打出
+  const stamped = f.t >= tStamp;
+  const rows = [
+    ['曲名', SONG.title], ['演出', SONG.artist], ['拍速', `${MV.audio.tempo} BPM`], ['拍號', `${MV.audio.meter}/4`],
+    ['小節', `${pad2(f.bar)} / ${pad2(BAR.end)}`], ['能量', null], ['狀態', stamped ? `已核　${timecode(tStamp)}` : '待核'],
+  ];
+  const x0 = 160, x1 = W - 160, yTop = 236, rh = 92;
+  c.fillStyle = C.ink; c.fillRect(x0, yTop - 2, (x1 - x0) * prog(f.t, t0, t0 + 0.6, ease.outExpo), 3);
+  rows.forEach(([label, value], i) => {
+    const tb = MV.timeOfBeat(b0 + 1 + i), u = prog(f.t, tb, tb + 0.5, ease.outExpo);
+    if (u <= 0) return;
+    const y = yTop + (i + 1) * rh;
+    c.fillStyle = C.ink; c.globalAlpha = 0.9; c.fillRect(x0, y, (x1 - x0) * u, 1.5); c.globalAlpha = 1;
+    mono(c, pad2(i + 1), x0, y - 34, { size: 16, color: C.ink, alpha: 0.5 });
+    mono(c, label, x0 + 60, y - 30, { size: 26, color: C.ink, alpha: 0.85, tracking: 10 });
+    c.fillStyle = C.ink; c.fillRect(x0 + 330, y - rh + 24, 1, rh - 24);
+    if (value === null) {
+      // 能量列：長條依能量伸縮，右邊印數值
+      const w = 600 * clamp(E);
+      c.fillStyle = C.ink; c.globalAlpha = 0.15; c.fillRect(x0 + 380, y - 48, 600, 20); c.globalAlpha = 1; c.fillRect(x0 + 380, y - 48, w, 20);
+      mono(c, E.toFixed(2), x0 + 1010, y - 32, { size: 20, color: C.ink });
+    } else {
+      const lay = MV.layout(c, value, { font: px => F.sans(px, 700), size: 40, tracking: 2 });
+      const n = Math.floor((frameIdx(f.t, 30) - frameIdx(tb, 30)) / 2);
+      const x0v = MV.drawGlyphs(c, lay, x0 + 380, y - 26, { fill: C.ink, each: (g, j) => (j < n ? {} : null) });
+      // 打字游標：還沒打完或狀態列待核時閃爍
+      if (n < lay.glyphs.length || (i === rows.length - 1 && !stamped)) {
+        const gx = n < lay.glyphs.length ? x0v + lay.glyphs[n].x : x0v + lay.width + 8;
+        if (frameIdx(f.t, 30) % 20 < 12) { c.fillStyle = C.main; c.fillRect(gx, y - 58, 3, 42); }
+      }
+    }
+  });
+  // 蓋章：bar 23 downbeat 用彈簧落下（1.7 倍→1，過衝），斜 7°；重複一次 multiply 做墨色不均
+  let sh = [0, 0];
+  if (stamped) {
+    const sp = MV.spring(f.t, tStamp, { freq: 4.5, damp: 0.5 }), s = lerp(1.7, 1, sp), a = prog(f.t, tStamp, tStamp + 0.05);
+    c.save(); c.translate(W * 0.70, H * 0.60); c.rotate(-0.12); c.scale(s, s); c.globalAlpha = a;
+    const draw = () => {
+      c.lineWidth = 6; c.strokeStyle = C.main; c.strokeRect(-178, -92, 356, 184);
+      c.font = F.sans(118, 900); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = C.main; c.fillText('已 核', 0, 6);
+    };
+    draw(); c.globalCompositeOperation = 'multiply'; c.globalAlpha = a * 0.5; draw();
+    c.restore();
+    sh = shakeVec(f.t, 9 * pulse(f.t, tStamp, 0.08));
+  }
+  return { shake: sh, halation: 0, vignette: 0.12, tint: null };
+}
+
+// ================================================================ plate 5：尾奏
+function plateOutro(c, f) {
+  const t0 = f.entry.start, t1 = f.entry.end, p = f.p, b = f.bar - BAR.outro;
+  // 黑邊從 16:9 慢慢收到 2.2:1；角落記號與 REC 都要避開黑邊
+  const lb = lerp(16 / 9, 2.2, smoothstep(0, 0.3, p)), barH = Math.max(0, (H - W / lb) / 2);
+  bg(c, C.ink);
+  // 雨線減速並躺平成一條橫線（母題收束）；橫線接著收成一段短線
+  const slow = 1 - smoothstep(0, 0.55, p), straight = smoothstep(0.35, 0.7, p);
+  rain(c, lerp(f.t, t0 + 6.5, straight) , { alpha: 0.4 * (1 - smoothstep(0.75, 0.9, p)), speed: slow, straight, yLine: H * 0.52 + 44 });
+  if (p > 0.72) { const u = smoothstep(0.72, 0.9, p); c.fillStyle = C.paper; c.globalAlpha = u; c.fillRect(W / 2 - 300 * (1 - u), H * 0.52 + 44, 600 * (1 - u) + 2, 2); c.globalAlpha = 1; }
+  cornerMarks(c, C.neutral, 0.7 * (1 - smoothstep(0.8, 0.95, p)), 72 + barH);
+  // 曲名：寬字距小字，bar 27 淡入；下方等寬「END OF TAKE」bar 28 出現
+  if (b >= 1) {
+    const u = prog(f.t, MV.timeOfBar(BAR.outro + 1), MV.timeOfBar(BAR.outro + 1) + 1.2, ease.outCubic);
+    const lay = MV.layout(c, SONG.title, { font: px => F.serif(px, 500), size: 60, tracking: 30 });
+    MV.drawGlyphs(c, lay, W / 2 + 15, H * 0.52, { align: 'center', fill: C.paper, alpha: 0.92 * u, each: (g, i) => ({ dy: (1 - prog(f.t, MV.timeOfBar(BAR.outro + 1) + i * 0.06, MV.timeOfBar(BAR.outro + 1) + i * 0.06 + 0.8, ease.outCubic)) * 14 }) });
+  }
+  if (b >= 2) mono(c, `END OF ${SONG.take}`, W / 2, H * 0.52 + 92, { align: 'center', size: 20, alpha: 0.8 * prog(f.t, MV.timeOfBar(BAR.outro + 2), MV.timeOfBar(BAR.outro + 2) + 0.4) });
+  // REC 燈回來，bar 31 熄滅；時碼走到最後
+  const recOn = b < 5 && frameIdx(f.t, 30) % 30 < 18;
+  c.fillStyle = C.main; c.globalAlpha = b < 5 ? (recOn ? 1 : 0.25) : 0.12; c.beginPath(); c.arc(112, 103 + barH, 7, 0, MV.TAU); c.fill(); c.globalAlpha = 1;
+  mono(c, `REC  TC ${timecode(f.t)}`, 134, 110 + barH, { size: 22, alpha: 0.8 });
+  return {
+    grain: lerp(0.09, 0, smoothstep(0.3, 1, p)), vignette: lerp(0.32, 0.6, p),
+    letterbox: lb, fade: prog(f.t, t1 - 1.6, t1 - 0.15, ease.inQuad),
+  };
+}
+
+// ================================================================ 時間軸與資料載入
+function build() {
+  const bar = n => MV.timeOfBar(n);
+  const PLATES = [
+    { id: 'title', start: bar(BAR.title), end: bar(BAR.verse), render: plateTitle },
+    { id: 'verse', start: bar(BAR.verse), end: bar(BAR.chorus), render: plateVerse },
+    { id: 'chorus', start: bar(BAR.chorus), end: bar(BAR.paper), render: plateChorus, transition: 'whip', overlap: 0.25 },
+    { id: 'paper', start: bar(BAR.paper), end: bar(BAR.outro), render: platePaper, transition: 'invert', overlap: 0.1 },
+    { id: 'outro', start: bar(BAR.outro), end: Math.min(bar(BAR.end), MV.audio.duration), render: plateOutro },
+  ];
+  const cv = document.getElementById('c');
+  // render.py --scale 2 用 deviceScaleFactor 2 → 畫布實際 3840×2160，版面仍是 1920×1080；瀏覽器預覽固定 1 倍求順
+  const DPR = navigator.webdriver ? (window.devicePixelRatio || 1) : 1;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const ctx = cv.getContext('2d');
+  const tl = MV.timeline(PLATES, { W, H, scale: DPR, post: { grain: 0.09, vignette: 0.32, halation: 0.12, tint: 'rgba(255,170,90,0.07)' } });
+  window.DURATION = PLATES[PLATES.length - 1].end;
+  window.CUTS = tl.cuts;
+  window.TL = tl;
+  window.render = t => { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); tl.render(ctx, t); };
+  window.render(0);
+  if (!navigator.webdriver) preview(tl);
+}
+// 內建示範資料：120 BPM 等拍格、32 小節、4 行原創歌詞（假時間碼：每行佔 4 小節，字平均分配）
+function demoData() {
+  const audio = MV.setGrid({ bpm: 120, meter: 4, duration: 64 });
+  const names = [['intro', BAR.title], ['verse', BAR.verse], ['chorus', BAR.chorus], ['bridge', BAR.paper], ['outro', BAR.outro]];
+  audio.sections = names.map(([name, b], i) => ({ name, bar: b, start: MV.timeOfBar(b), end: MV.timeOfBar(names[i + 1]?.[1] ?? BAR.end) }));
+  const texts = [[4, '路燈把雨點數成了拍子'], [8, '我在月台學會等待的字'], [12, '北回歸線上沒有人回信'], [16, '把名字留給下一班黎明']];
+  const lines = texts.map(([b, text]) => {
+    const chars = Array.from(text), s = MV.timeOfBar(b) + 0.5, e = MV.timeOfBar(b + 4) - 0.9, per = (e - s) / chars.length;
+    return { text, start: s, end: e, words: chars.map((ch, i) => ({ w: ch, start: s + i * per, end: s + (i + 1) * per })) };
+  });
+  return { audio, lyrics: { lines } };
+}
+async function loadData() {
+  if (window.DATA && (window.DATA.audio || window.DATA.lyrics)) {
+    if (!window.DATA.audio) demoData();
+    MV.setData(window.DATA);
+    return;
+  }
+  if (/^https?:/.test(location.protocol)) {
+    try {
+      const [a, l] = await Promise.all(['./data/audio.json', './data/lyrics.json'].map(u => fetch(u).then(r => (r.ok ? r.json() : null)).catch(() => null)));
+      if (a || l) { if (!a) demoData(); MV.setData({ audio: a, lyrics: l }); return; }
+    } catch (e) { /* 沒有 data/ 就用示範資料 */ }
+  }
+  MV.setData(demoData());
+}
+
+// ================================================================ 瀏覽器預覽（render.py 模式不執行）
+function preview(tl) {
+  const hud = document.createElement('div'); hud.id = 'hud'; document.body.appendChild(hud);
+  let playing = false, tCur = 0, anchor = 0, useAudio = false;
+  const au = new Audio('./data/song.mp3');
+  au.addEventListener('canplaythrough', () => { useAudio = true; });
+  au.addEventListener('error', () => { useAudio = false; });
+  const now = () => (useAudio ? au.currentTime : playing ? tCur + (performance.now() - anchor) / 1000 : tCur);
+  const seek = t => { tCur = clamp(t, 0, window.DURATION); anchor = performance.now(); if (useAudio) au.currentTime = tCur; };
+  const toggle = () => { tCur = now(); anchor = performance.now(); playing = !playing; if (useAudio) (playing ? au.play() : au.pause()); };
+  const cutJump = dir => { const cuts = window.CUTS, t = now(); const next = dir > 0 ? cuts.find(c => c > t + 0.02) : [...cuts].reverse().find(c => c < t - 0.02); seek(next ?? (dir > 0 ? window.DURATION : 0)); };
+  addEventListener('keydown', e => {
+    const step = e.shiftKey ? 5 : 1;
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'ArrowLeft') seek(now() - step);
+    else if (e.key === 'ArrowRight') seek(now() + step);
+    else if (e.key === ',') seek(now() - 1 / 30);
+    else if (e.key === '.') seek(now() + 1 / 30);
+    else if (e.key === '[') cutJump(-1);
+    else if (e.key === ']') cutJump(1);
+    else if (e.key === 'h') hud.classList.toggle('hidden');
+  });
+  const loop = () => {
+    let t = now();
+    if (t >= window.DURATION) { playing = false; t = window.DURATION; tCur = t; if (useAudio) au.pause(); }
+    window.render(t);
+    const s = MV.sectionAt(t), e = tl.entryAt(t);
+    hud.textContent = `t ${t.toFixed(2)}s  beat ${MV.beatAt(t).toFixed(2)}  bar ${MV.barAt(t).toFixed(2)}  section ${s.name}  plate ${e.id}  ${playing ? '▶' : '❚❚'}${useAudio ? '  audio' : '  clock'}\nspace 播放  ←→ ±1s  shift ±5s  , . 逐格  [ ] 剪點  h 隱藏`;
+    requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+loadData().then(build).catch(err => { console.error(err); throw err; });
+</script>
+</body>
+</html>
