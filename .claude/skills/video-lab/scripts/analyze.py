@@ -12,7 +12,8 @@
      （--first-beat 秒 可覆寫：拍格從這個時間開始，而且它就是 bar 0 的 downbeat）
   3. downbeat：在 meter 個相位中，選「低頻 onset（kick）＋混音 onset＋和弦變化（chroma 差異）」最強的相位
   4. sections：--sections 給「名稱:小節序」（bar 0 = 第一個 downbeat，每段到下一段開始為止，最後一段到曲末）；
-     沒給就用 librosa.segment.agglomerative 在小節同步的 chroma＋MFCC＋RMS 上自動分 6–10 段，命名 S1、S2…
+     沒給就用 librosa.segment.agglomerative 在小節同步的 MFCC＋RMS＋spectral contrast 上自動分段（最多 10 段，
+     短於 2 小節的併入鄰段），命名 S1、S2…
   5. env：100 fps 的 rms／low(<150 Hz)／mid(150–2000)／high(>4000)，fast-attack(10 ms)/slow-release(90 ms) follower，
      各自除以 99 百分位後裁到 0..1
   6. onsets：kick（<120 Hz 帶的攻擊點）、snare（1.5–5 kHz 攻擊點且 40–120 ms 後有 0.5–5 kHz 雜訊尾巴；
@@ -209,29 +210,38 @@ def pick_downbeat_phase(beats, meter, o_mix, o_low, ofps, y, sr):
 
 # ---------------------------------------------------------------- 段落
 def auto_sections(y, sr, downbeats, duration):
-    """小節同步的 chroma＋MFCC＋RMS 上做 agglomerative 分段（6–10 段），起點對齊 downbeat。"""
+    """小節同步的 MFCC＋RMS＋spectral contrast 上做 agglomerative 分段（最多 10 段），
+    短於 2 小節的段併入鄰段，起點對齊 downbeat。"""
     import librosa
     nb = len(downbeats)
     if nb < 2:
         return [("S1", 0)]
-    k = int(min(10, max(6, round(nb / 8))))
+    k = int(min(10, max(6, round(nb / 4))))
     k = min(k, nb)
     y22 = librosa.resample(y, orig_sr=sr, target_sr=OSR)
     hop = 512
-    chroma = librosa.feature.chroma_stft(y=y22, sr=OSR, hop_length=hop)
     mfcc = librosa.feature.mfcc(y=y22, sr=OSR, hop_length=hop, n_mfcc=13)[1:]
-    rms = librosa.feature.rms(y=y22, hop_length=hop)
-    rms = np.log(rms + 1e-6)
+    rms = np.log(librosa.feature.rms(y=y22, hop_length=hop) + 1e-6)
+    contrast = librosa.feature.spectral_contrast(y=y22, sr=OSR, hop_length=hop)
     frames = librosa.time_to_frames(downbeats, sr=OSR, hop_length=hop)
-    frames = np.clip(frames, 0, chroma.shape[1] - 1)
+    frames = np.clip(frames, 0, mfcc.shape[1] - 1)
     feats = []
-    for F in (chroma, mfcc, rms):
+    for F, rep in ((mfcc, 1), (rms, 3), (contrast, 1)):
         S = librosa.util.sync(F, frames, aggregate=np.mean)[:, 1: nb + 1]   # 第 0 欄是第一個 downbeat 之前
         S = (S - S.mean(1, keepdims=True)) / (S.std(1, keepdims=True) + 1e-9)
-        feats.append(S)
+        feats.append(np.repeat(S, rep, axis=0))   # RMS 加權（段落最明顯的差別是音量與編制）
     X = np.vstack(feats)
-    bounds = librosa.segment.agglomerative(X, k)
-    bounds = sorted(set(int(b) for b in bounds) | {0})
+    bounds = sorted(set(int(b) for b in librosa.segment.agglomerative(X, k)) | {0})
+    # 短於 2 小節的段：第一段併入下一段，其餘併入前一段
+    changed = True
+    while changed and len(bounds) > 1:
+        changed = False
+        segs = list(zip(bounds, bounds[1:] + [nb]))
+        for i, (s0, e0) in enumerate(segs):
+            if e0 - s0 < 2:
+                bounds.pop(1 if i == 0 else i)
+                changed = True
+                break
     return [(f"S{i + 1}", b) for i, b in enumerate(bounds)]
 
 
@@ -282,7 +292,7 @@ def drum_onsets(y, sr):
         thr = np.percentile(tail, 95) - 25
         # 尾巴要像雜訊（頻譜平坦度），排除 bass／人聲／吉他這類有諧波的攻擊
         fl = np.array([max(flatness(y, sr, t + 0.005), flatness(y, sr, t + 0.03)) for t in st])
-        st = st[(rel > -8) & (tail > thr) & (fl >= 0.35)]
+        st = st[(rel > -8) & (tail > thr) & (fl >= 0.5)]
     ht, _ = band_onsets(y, sr, 7000, None, win=0.006, min_gap=0.06, rel_db=9)
     if len(st) and len(ht):
         dist = np.min(np.abs(ht[:, None] - st[None, :]), axis=1)
