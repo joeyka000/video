@@ -10,7 +10,7 @@
   1. onset envelope（librosa.onset.onset_strength，混音＋低頻帶）→ tempo（librosa.feature.tempo；--bpm 可覆寫）
   2. 擬合常數拍格：對 tempo（±7%）與相位做網格搜尋，最大化拍點上的 onset 強度，再用 kick 攻擊點的中位殘差修正相位
      （--first-beat 秒 可覆寫：拍格從這個時間開始，而且它就是 bar 0 的 downbeat）
-  3. downbeat：在 meter 個相位中，選「低頻 onset（kick）＋混音 onset＋和弦變化（chroma 差異）」最強的相位
+  3. downbeat：在 meter 個相位中，選「低頻 onset（kick）＋混音 onset＋和絃變化（chroma 差異）」最強的相位
   4. sections：--sections 給「名稱:小節序」（bar 0 = 第一個 downbeat，每段到下一段開始為止，最後一段到曲末）；
      沒給就用 librosa.segment.agglomerative 在小節同步的 MFCC＋RMS＋spectral contrast 上自動分段（最多 10 段，
      短於 2 小節的併入鄰段），命名 S1、S2…
@@ -181,7 +181,7 @@ def refine_phase_on_kicks(kick_t, P, off):
 
 
 def pick_downbeat_phase(beats, meter, o_mix, o_low, ofps, y, sr):
-    """在 meter 個相位中選 kick＋onset＋和弦變化最強者。回傳 (相位 k, 各相位分數)。"""
+    """在 meter 個相位中選 kick＋onset＋和絃變化最強者。回傳 (相位 k, 各相位分數)。"""
     import librosa
     def at(o, ts):
         idx = np.clip(np.round(ts * ofps).astype(int), 1, len(o) - 2)
@@ -190,7 +190,7 @@ def pick_downbeat_phase(beats, meter, o_mix, o_low, ofps, y, sr):
     low = at(o_low, beats)
     mix = mix / (mix.mean() + 1e-9)
     low = low / (low.mean() + 1e-9)
-    # 和弦變化：每拍的 chroma 與前一拍的 cos 距離
+    # 和絃變化：每拍的 chroma 與前一拍的 cos 距離
     y22 = librosa.resample(y, orig_sr=sr, target_sr=OSR)
     chroma = librosa.feature.chroma_stft(y=y22, sr=OSR, hop_length=512)
     frames = librosa.time_to_frames(beats, sr=OSR, hop_length=512)

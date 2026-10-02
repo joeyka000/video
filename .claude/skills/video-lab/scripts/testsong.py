@@ -8,8 +8,8 @@
   kick  低頻正弦掃頻＋指數衰減，每拍一下（verse、chorus）
   snare 帶通雜訊爆發＋短音，第 2、4 拍（chorus）
   hat   短高頻雜訊，八分音符（chorus）
-  bass  鋸齒波（additive）跟和弦根音，verse 四分音符、chorus 八分音符
-  pad   每小節換和弦 I–V–vi–IV（C 大調），所有段落都有
+  bass  鋸齒波（additive）跟和絃根音，verse 四分音符、chorus 八分音符
+  pad   每小節換和絃 I–V–vi–IV（C 大調），所有段落都有
 段落：intro（只有 pad，4 小節）→ verse（加 kick＋bass，8 小節）→ chorus（全編制、更大聲，8 小節）
       → verse → chorus …交替到小節用完。
 
@@ -30,7 +30,7 @@ LEAD = 0.5   # 開頭空白（秒）：讓拍格相位不是 0，才測得到相
 TAIL = 1.0   # 尾端餘韻（秒）
 METER = 4
 
-# I–V–vi–IV（C 大調）：和弦名、根音 MIDI、pad 三和音 MIDI（用轉位讓聲部平順）
+# I–V–vi–IV（C 大調）：和絃名、根音 MIDI、pad 三和音 MIDI（用轉位讓聲部平順）
 CHORDS = [
     ("C", 36, [60, 64, 67]),
     ("G", 43, [59, 62, 67]),

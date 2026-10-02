@@ -1,5 +1,5 @@
 // mv-kit.js — MV 工具庫（Canvas 2D，掛在 window.MV）
-// 原則：畫面全部是 t（秒）的純函數。這裡沒有 Math.random、Date.now、requestAnimationFrame，也不累加狀態，
+// 原則：畫面全部是 t（秒）的純函式。這裡沒有 Math.random、Date.now、requestAnimationFrame，也不累加狀態，
 // 所以瀏覽器預覽、render.py 逐格輸出、子格取樣動態模糊（--samples）看到的都是同一張圖。
 // 用法：
 //   <script src="mv-kit.js"></script>
@@ -173,7 +173,7 @@
     while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= x) lo = m + 1; else hi = m; }
     return lo - 1;
   }
-  // 時間 → 連續索引（陣列兩端用相鄰間隔外推）；indexAt 與 timeAt 互為反函數
+  // 時間 → 連續索引（陣列兩端用相鄰間隔外推）；indexAt 與 timeAt 互為反函式
   function indexAt(arr, t, period) {
     const n = arr.length;
     if (n === 0) return t / period;
@@ -236,7 +236,7 @@
   // ================================================================ 歌詞
   const fold = s => String(s).toLowerCase().replace(/\s+/g, '');
   const warned = new Set();
-  // 用內容找歌詞行（不寫死時間）：MV.line('月台') → 第一個含「月台」的行；nth 取第幾個；找不到回 null 並警告一次
+  // 用內容找歌詞行（不寫死時間）：MV.line('雨點') → 第一個含「雨點」的行；nth 取第幾個；找不到回 null 並警告一次
   function line(query, nth = 0) {
     const q = fold(query), hits = (D.lyrics?.lines || []).filter(l => fold(l.text).includes(q));
     const l = hits[nth] || null;
@@ -294,7 +294,7 @@
     return { text: String(text ?? ''), glyphs, width, ascent, descent, size, font: fontStr, tracking };
   }
   // 把 layout 的字一個一個畫出來：align left|center|right；each(g, i) 可回 {dx, dy, alpha, scale, rot, fill, stroke} 做逐字動畫，回 null 跳過
-  // 回傳文字左緣 x0（之後要畫底線、游標時用）
+  // 回傳文字左緣 x0（之後要畫底線、打字 caret 時用）
   function drawGlyphs(ctx, lay, x, y, o = {}) {
     const align = o.align || 'left';
     const x0 = x - (align === 'center' ? lay.width / 2 : align === 'right' ? lay.width : 0);
@@ -366,7 +366,7 @@
 
   // ================================================================ 後製
   const POST = { tiles: null, n: 6, size: 512, scratch: null };
-  // 預先產生 6 張顆粒貼圖（三角分布的灰階雜訊，128 為中性灰），之後每格輪流用，不必逐格產亂數
+  // 預先產生 6 張顆粒貼圖（三角分佈的灰階雜訊，128 為中性灰），之後每格輪流用，不必逐格產亂數
   function grainTiles() {
     if (POST.tiles) return POST.tiles;
     const tiles = [], S = POST.size;
@@ -382,7 +382,7 @@
     }
     return (POST.tiles = tiles);
   }
-  // 一次套全部後製，每個參數 0／省略 = 關：
+  // 一次套全部後製，每個選項 0／省略 = 關：
   //   grain 顆粒 0..1（0.06–0.14 像底片）、vignette 暈影 0..1、flash 閃白 0..1、invert 反轉 0..1、fade 淡黑 0..1、
   //   letterbox 目標長寬比（如 2.39）、tint 疊色（CSS 色，soft-light）、halation 亮部暈光 0..1（量要小，紙底請關）
   //   t 用來決定這一格用哪張顆粒貼圖；W／H 省略時從 ctx 的 transform 推回邏輯尺寸
@@ -466,7 +466,8 @@
   //   crossfade／wipe／whip／zoom 在 start 前 overlap 秒開始、在 start 落定；flash／invert 從 start 開始並在 overlap 內衰減
   //   f = {t, lt, p, beat, bar, beatPhase, barPhase, W, H, a:{rms,low,mid,high,kick,snare,hat}, entry, i}
   //   scene 的 render 可回傳後製覆寫 {shake:[x,y], zoom, flash, invert, fade, grain, vignette, halation, tint, letterbox}
-  //   回 {render(ctx, t), cuts:[秒...], entries, entryAt(t)}；scale 給 2 時離屏畫布為 2 倍（配合 render.py --scale 2）
+  //   回 {render(ctx, t), cuts:[秒...], entries, entryAt(t)}；cuts 是第 2 個 entry 起每個 start（第 1 個 entry 的 start 不算剪點）
+  //   scale 給 2 時離屏畫布為 2 倍（配合 render.py --scale 2，主 ctx 也要先 setTransform(2,0,0,2,0,0)）
   function timeline(entries, o = {}) {
     const W = o.W ?? 1920, H = o.H ?? 1080, S = o.scale ?? 1;
     const list = entries.slice().sort((a, b) => a.start - b.start).map((e, i) => {
@@ -476,7 +477,7 @@
     const cuts = list.slice(1).map(e => e.start);
     let cvA = null, cvB = null;
     const off = () => { const cv = document.createElement('canvas'); cv.width = Math.round(W * S); cv.height = Math.round(H * S); return cv; };
-    // 每格資料：場景 render 的第二個參數
+    // 每格資料：場景 render 的第二個引數
     const frameFor = (e, t) => ({
       t, lt: t - e.start, p: clamp((t - e.start) / Math.max(1e-6, e.end - e.start)),
       beat: beatAt(t), bar: barAt(t), beatPhase: beatPhase(t), barPhase: barPhase(t), W, H, entry: e, i: e.i,

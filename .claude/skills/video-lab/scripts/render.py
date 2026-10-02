@@ -12,14 +12,14 @@
   python render.py page.html -o out/cuts.png --cuts                                # 讀 window.CUTS 出剪點拼圖
 
 頁面約定：
-  - window.render(t) 把第 t 秒的畫面畫出來（可以是 async）。畫面必須是 t 的純函數：同一個 t 永遠畫出同一張圖。
+  - window.render(t) 把第 t 秒的畫面畫出來（可以是 async）。畫面必須是 t 的純函式：同一個 t 永遠畫出同一張圖。
   - 可選 window.DURATION（秒），沒給 --dur 時使用；可選 window.CUTS = [秒, ...] 給 --cuts 用。
   - --data key=path 會在頁面載入前注入 window.DATA = {key: JSON, ...}（例如 window.DATA.audio、window.DATA.lyrics）。
-  - 另注入 window.RENDER_SCALE（--scale）與 window.RENDER_FPS（--fps），頁面要做真 4K 時可依 RENDER_SCALE 放大 canvas 像素。
+  - 另注入 window.RENDER_SCALE（--scale）與 window.RENDER_FPS（--fps），頁面要做真 4K 時可依 RENDER_SCALE 放大 canvas 畫素。
   - --samples N：在 shutter×(1/fps) 內以該格時間為中心取 N 個子格，各呼叫 render(t_k) 後把主 canvas
-    （window.CANVAS 或 document.querySelector('canvas')）的像素平均再截圖；只支援 Canvas 2D。N=1 走原路徑。
+    （window.CANVAS 或 document.querySelector('canvas')）的畫素平均再截圖；只支援 Canvas 2D。N=1 走原路徑。
   - --scale 2：deviceScaleFactor=2，頁面仍以 --w×--h 的 CSS 版面排版，截圖與影片為實體尺寸（1920×1080 → 3840×2160）。
-    頁面 canvas 若仍是 1920×1080 像素，輸出只是放大；要真 4K 請頁面依 window.RENDER_SCALE 放大 canvas.width/height。
+    頁面 canvas 若仍是 1920×1080 畫素，輸出只是放大；要真 4K 請頁面依 window.RENDER_SCALE 放大 canvas.width/height。
   - 頁面的 console.error 與未捕捉的例外（pageerror）會印到 stderr；有 pageerror 或 render(t) 丟例外時以非 0 結束。
 """
 import argparse
@@ -42,7 +42,7 @@ window.__mvSample = async function (t, n, shutter, fps) {
   const W = cv.width, H = cv.height, N = W * H * 4;
   const acc = new Float32Array(N);
   for (let k = 0; k < n; k++) {
-    const tk = t + (shutter / fps) * ((k + 0.5) / n - 0.5);   // 以 t 為中心、分布在 shutter 內
+    const tk = t + (shutter / fps) * ((k + 0.5) / n - 0.5);   // 以 t 為中心、分佈在 shutter 內
     await window.render(tk);
     const d = ctx.getImageData(0, 0, W, H).data;
     for (let i = 0; i < N; i++) acc[i] += d[i];
@@ -93,7 +93,7 @@ def main():
     ap.add_argument("--sheet", help="逗號分隔的時間點，輸出預覽拼圖而非影片")
     ap.add_argument("--scale", type=int, default=1, help="deviceScaleFactor；2 = 3840×2160，版面仍 1920×1080")
     ap.add_argument("--samples", type=int, default=1, help="每格的子格數（動態模糊），1 = 不做")
-    ap.add_argument("--shutter", type=float, default=0.5, help="快門開角：子格分布在 shutter×(1/fps) 內")
+    ap.add_argument("--shutter", type=float, default=0.5, help="快門開角：子格分佈在 shutter×(1/fps) 內")
     ap.add_argument("--data", action="append", default=[], metavar="KEY=PATH", help="注入 window.DATA[KEY] = JSON")
     ap.add_argument("--cuts", action="store_true", help="讀頁面 window.CUTS 輸出剪點拼圖（每個剪點前後各 2 格）")
     a = ap.parse_args()
@@ -197,6 +197,8 @@ def main():
                 pr.wait()
         except PlaywrightError:
             pass
+        except BrokenPipeError:
+            print("ffmpeg 提前結束（見上方 ffmpeg 錯誤訊息）", file=sys.stderr)
         finally:
             if pr and pr.stdin and not pr.stdin.closed:
                 pr.stdin.close()

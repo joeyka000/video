@@ -108,6 +108,7 @@ def main():
     info = probe(a.video)
     fps, dur = info["fps"], info["dur"]
     fr = 1.0 / fps
+    total_frames = info["nb"] or int(round(dur * fps))
 
     # 1. 剪點偵測
     method = "select='gt(scene,0.3)'"
@@ -170,6 +171,7 @@ def main():
     for s in sections:
         dbs = [d for d in downbeats if s["start"] - 1e-6 <= d < s["end"]]
         frames = [(round((d - offset) * fps), d) for d in dbs if 0 <= (d - offset) < dur]
+        frames = [(fi, d) for fi, d in frames if fi < total_frames]
         if not frames:
             continue
         note = ""
@@ -182,7 +184,8 @@ def main():
         cmd_path = os.path.join(a.out, f"_cmds_{name}.txt")
         with open(cmd_path, "w", encoding="utf-8") as f:
             for fi, d in frames:
-                f.write(f"{(fi - 0.5) / fps:.4f} drawtext reinit 'text={safe_label(f'{s['name']} {d:.3f}s')}';\n")
+                lab = safe_label(f"{s['name']} {d:.3f}s")
+                f.write(f"{max(0.0, (fi - 0.5) / fps):.4f} drawtext reinit 'text={lab}';\n")
         cmd_files.append(cmd_path)
         sel = "+".join(f"eq(n\\,{fi})" for fi, _ in frames)
         cols = min(4, len(frames))

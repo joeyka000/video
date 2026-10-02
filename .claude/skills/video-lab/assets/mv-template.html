@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <title>mv-template</title>
 <!--
-mv-template.html — 一支 MV 的骨架與示範（Canvas 2D，1920×1080，畫面是 t 的純函數）
+mv-template.html — 一支 MV 的骨架與示範（Canvas 2D，1920×1080，畫面是 t 的純函式）
 
 怎麼換成自己的歌
 1. 把 analyze.py 產的 data/audio.json、align.py 產的 data/lyrics.json、歌曲 data/song.mp3 放在本檔旁的 data/ 目錄
    資料載入順序：window.DATA（render.py --data 注入）→ fetch ./data/audio.json 與 ./data/lyrics.json（用 http 伺服器開才抓得到）
    → 都沒有就用檔尾 demoData() 的內建示範（120 BPM 等拍格、32 小節、4 行示範歌詞），直接雙擊開檔或用舊版 render.py 也能跑
 2. 改檔頭的色票 C、曲名 SONG；段落邊界 BAR 用小節序（看 analyze.py 印的段落表），不寫死秒數
-   歌詞行用 MV.line('內容') 找，不寫死時間；換歌後把 verse／chorus 兩個 plate 裡的查詢字串改掉即可
+   歌詞行用內容找（lineOr → MV.line('內容')），不寫死時間；verse 依時間自動輪流各行，chorus 的查詢字串換成新歌的字即可
 
 怎麼預覽（瀏覽器）
    在本目錄：python3 -m http.server 8000 → 開 http://localhost:8000/mv-template.html
@@ -19,7 +19,7 @@ mv-template.html — 一支 MV 的骨架與示範（Canvas 2D，1920×1080，畫
    有 ./data/song.mp3 時用 <audio> 當時鐘（有聲音），否則用 performance.now 當時鐘；時鐘只決定 t，畫面全由 render(t) 決定
    render.py（headless）模式下不會出現 HUD 與鍵盤控制
 
-怎麼輸出（參數以 scripts/render.py 為準）
+怎麼輸出（選項以 scripts/render.py 為準）
    預覽拼圖：python scripts/render.py mv-template.html -o out/sheet.png --sheet 1,2.3,6.5,12.4
    正式輸出：python scripts/render.py mv-template.html -o out/mv.mp4 --fps 30 \
              --data audio=data/audio.json --data lyrics=data/lyrics.json --audio data/song.mp3
@@ -57,11 +57,11 @@ const F = {
   serif: (px, w = 900) => MV.font('"Noto Serif TC", "Noto Serif CJK TC", serif', px, w),
   mono: (px, w = 500) => MV.font('"Noto Sans Mono CJK TC", "Liberation Mono", monospace', px, w),
 };
-const SONG = { title: '北回歸線的雨', artist: '白晝信號', take: 'TAKE 03', year: '2026' };
+const SONG = { title: '北迴歸線的雨', artist: '白晝訊號', take: 'TAKE 03', year: '2026' };
 // 段落邊界（小節序；bar 0 = 第一個 downbeat）。換歌時照 analyze.py 的段落表改這裡
 const BAR = { title: 0, verse: 4, chorus: 12, paper: 20, outro: 26, end: 32 };
 
-// ================================================================ 共用小工具（全部是 t 的純函數）
+// ================================================================ 共用小工具（全部是 t 的純函式）
 const { clamp, lerp, prog, ease, pulse, hash, frameIdx, smoothstep } = MV;
 const bg = (c, col) => { c.fillStyle = col; c.fillRect(0, 0, W, H); };
 // 等寬標註：小字、字距寬；o.align 左右、o.typed 給秒數時逐字打出（每 2 格一字）
@@ -140,10 +140,10 @@ function plateTitle(c, f) {
     for (let i = 0; i < Math.min(4, n); i++) {
       const tb = MV.timeOfBeat(MV.beatAt(t0) + i), u = prog(f.t, tb, tb + 0.12, ease.outCubic);
       c.fillStyle = i === n - 1 ? C.main : C.neutral; c.globalAlpha = i === n - 1 ? 1 : 0.5;
-      c.fillRect(tx + i * 34, ty + 36 + (1 - u) * 10, 18, 18 * u);
+      c.fillRect(tx + i * 38, ty + 32 + (1 - u) * 10, 22, 22 * u);
     }
     c.globalAlpha = 1;
-    mono(c, 'COUNT IN', tx + 150, ty + 52, { size: 16, alpha: 0.6 * prog(f.t, t0, t0 + 0.3) });
+    mono(c, 'COUNT IN', tx + 170, ty + 52, { size: 16, alpha: 0.6 * prog(f.t, t0, t0 + 0.3) });
   }
   if (f.t >= tSlam) {
     const each = (g, i) => { const u = prog(f.t, tSlam + i * 0.033, tSlam + i * 0.033 + 0.24, ease.outBack); return { scale: lerp(1.6, 1, u), alpha: clamp(u * 4) }; };
@@ -228,7 +228,7 @@ function plateVerse(c, f) {
 // ================================================================ plate 3：副歌 slam
 function plateChorus(c, f) {
   const k = kickPulse(f), tk = lastKick(f.t), v = snareCount(f.t, f.entry.start) % 3;
-  const L3 = lineOr('回信', 2), L4 = lineOr('黎明', 3);
+  const L3 = lineOr('來信', 2), L4 = lineOr('黎明', 3);
   const ln = [L3, L4].find(l => l && f.t >= l.start - 0.1 && f.t < l.end + 0.5) || (f.t < (L4?.start ?? Infinity) ? L3 : L4);
   // 這一拍要砸的字：正在唱的字；沒有就最後唱過的；都沒有用母題字「雨」
   let ch = '雨';
@@ -252,7 +252,7 @@ function plateChorus(c, f) {
   mono(c, `KICK ${String(Math.max(0, Math.floor(MV.beatAt(f.t) - MV.beatAt(f.entry.start)) + 1)).padStart(3, '0')}`, W - 100, 110, { align: 'right', size: 20, color: lab });
   mono(c, `LAYOUT ${String.fromCharCode(65 + v)}`, W - 100, 140, { align: 'right', size: 20, color: lab });
   // 下方整行歌詞 karaoke（亮字永不超前）
-  if (ln) MV.karaoke(c, ln, f.t, { x: W / 2, y: H - 96, size: 38, font: px => F.sans(px, 700), align: 'center', maxW: 1400, tracking: 4,
+  if (ln) MV.karaoke(c, ln, f.t, { x: W / 2, y: H - 112, size: 38, font: px => F.sans(px, 700), align: 'center', maxW: 1400, tracking: 4,
     sung: strong, unsung: v === 1 ? 'rgba(15,18,22,0.35)' : v === 2 ? 'rgba(255,255,255,0.4)' : 'rgba(139,144,150,0.55)' });
   c.restore();
   return { shake: shakeVec(f.t, 24 * k), flash: v === 1 ? 0 : 0.38 * k, zoom: 1 + 0.035 * k, halation: v === 0 ? 0.18 : 0 };
@@ -291,12 +291,12 @@ function platePaper(c, f) {
       // 能量列：長條依能量伸縮，右邊印數值
       const w = 600 * clamp(E);
       c.fillStyle = C.ink; c.globalAlpha = 0.15; c.fillRect(x0 + 380, y - 48, 600, 20); c.globalAlpha = 1; c.fillRect(x0 + 380, y - 48, w, 20);
-      mono(c, E.toFixed(2), x0 + 1010, y - 32, { size: 20, color: C.ink });
+      mono(c, E.toFixed(2), x1 - 16, y - 32, { size: 20, color: C.ink, align: 'right' });
     } else {
       const lay = MV.layout(c, value, { font: px => F.sans(px, 700), size: 40, tracking: 2 });
       const n = Math.floor((frameIdx(f.t, 30) - frameIdx(tb, 30)) / 2);
       const x0v = MV.drawGlyphs(c, lay, x0 + 380, y - 26, { fill: C.ink, each: (g, j) => (j < n ? {} : null) });
-      // 打字游標：還沒打完或狀態列待核時閃爍
+      // 打字 caret：還沒打完或狀態列待核時閃爍
       if (n < lay.glyphs.length || (i === rows.length - 1 && !stamped)) {
         const gx = n < lay.glyphs.length ? x0v + lay.glyphs[n].x : x0v + lay.width + 8;
         if (frameIdx(f.t, 30) % 20 < 12) { c.fillStyle = C.main; c.fillRect(gx, y - 58, 3, 42); }
@@ -375,7 +375,7 @@ function demoData() {
   const audio = MV.setGrid({ bpm: 120, meter: 4, duration: 64 });
   const names = [['intro', BAR.title], ['verse', BAR.verse], ['chorus', BAR.chorus], ['bridge', BAR.paper], ['outro', BAR.outro]];
   audio.sections = names.map(([name, b], i) => ({ name, bar: b, start: MV.timeOfBar(b), end: MV.timeOfBar(names[i + 1]?.[1] ?? BAR.end) }));
-  const texts = [[4, '路燈把雨點數成了拍子'], [8, '我在月台學會等待的字'], [12, '北回歸線上沒有人回信'], [16, '把名字留給下一班黎明']];
+  const texts = [[4, '路燈把雨點數成了拍子'], [8, '我在月臺學會等待的字'], [12, '北迴歸線上沒有人來信'], [16, '把名字留給下一班黎明']];
   const lines = texts.map(([b, text]) => {
     const chars = Array.from(text), s = MV.timeOfBar(b) + 0.5, e = MV.timeOfBar(b + 4) - 0.9, per = (e - s) / chars.length;
     return { text, start: s, end: e, words: chars.map((ch, i) => ({ w: ch, start: s + i * per, end: s + (i + 1) * per })) };

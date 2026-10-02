@@ -211,7 +211,7 @@ def main():
         with open(cmd_path, "w", encoding="utf-8") as f:
             for i, r in enumerate(rows, 1):
                 lab = safe_label(f"{i} bar{r['bar']}.{r['beat']:g} {r['t']:.3f}s {r['label']}")
-                f.write(f"{(r['f'] - 0.5) / fps:.4f} drawtext reinit 'text={lab}';\n")
+                f.write(f"{max(0.0, (r['f'] - 0.5) / fps):.4f} drawtext reinit 'text={lab}';\n")
         sel = "+".join(f"eq(n\\,{r['f']})" for r in rows)
         cols = min(4, len(rows))
         vf = (f"select='{sel}',sendcmd=f={cmd_path},scale=480:-2,"

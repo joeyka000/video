@@ -31,8 +31,8 @@ import statistics
 import sys
 
 # 中日韓一字一個 token；拉丁字母／數字連成一個單字（允許 don't 這種撇號）
-TOKEN = re.compile(r"[㐀-䶿一-鿿豈-﫿々〇぀-ヿ가-힯]"
-                   r"|[A-Za-z0-9]+(?:['’][A-Za-z]+)?")
+TOKEN = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3005\u3007\u3040-\u30FF\uAC00-\uD7AF]"
+                   r"|[A-Za-z0-9]+(?:['\u2019][A-Za-z]+)?")
 
 
 def tokens(text):
@@ -58,7 +58,7 @@ def load_words_json(path):
     for it in items:
         w = it.get("w", it.get("word"))
         if w is None or it.get("start") is None or it.get("end") is None:
-            sys.exit(f"{path} 有缺欄位的項目：{it}")
+            sys.exit(f"{path} 有缺欄位的資料：{it}")
         words.append({"w": str(w), "start": float(it["start"]), "end": float(it["end"])})
     if not words:
         sys.exit(f"{path} 裡沒有任何字")
@@ -75,7 +75,7 @@ def transcribe(song, model_name):
     except Exception as e:  # 模型下載失敗（網路被擋）或名稱錯
         sys.exit(f"無法載入 Whisper 模型 {model_name!r}：{e}\n"
                  "這個環境可能連不上 huggingface.co 下載模型。請在本機跑 faster-whisper（word_timestamps=True）"
-                 "把字級時間碼存成 words.json，再用 --from-json words.json 跑本腳本。")
+                 "把字級時間碼存成 words.json，再用 --from-json words.json 跑 align.py。")
     try:
         segments, _ = model.transcribe(song, language="zh", word_timestamps=True, beam_size=5)
         words = [{"w": w.word, "start": float(w.start), "end": float(w.end)}
