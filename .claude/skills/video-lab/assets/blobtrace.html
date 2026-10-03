@@ -478,7 +478,7 @@ function applyTone() {
 }
 
 function dotsInto(d, s, w, h, size, kind, x0 = 0, y0 = 0) {
-  // d: 目標像素，s: 來源像素（相同尺寸）
+  // d: 目標畫素，s: 來源畫素（相同尺寸）
   const half = size / 2;
   for (let y = 0; y < h; y++) {
     const cy = Math.min(h - 1, Math.floor(y / size) * size + (half | 0)), dy = y - cy;
@@ -1109,7 +1109,7 @@ function buildPanel() {
   binds.push(() => { bp.textContent = paused ? '播放' : '暫停'; });
   const bd = el('button', 'btn', '回到示範影像'); bd.type = 'button'; bd.id = 'btnDemo'; bd.addEventListener('click', backToDemo);
   br.append(fb, bp, bd); s.append(br);
-  s.append(el('p', 'hint', '也可以把檔案直接拖曳到畫面上。影片靜音並循環播放；處理畫面最寬 1280px，偵測用 160 格寬的縮圖。'));
+  s.append(el('p', 'hint', '也可以把檔案直接拖曳到畫面上。影片靜音並重複播放；處理畫面最寬 1280px，偵測用 160 格寬的縮圖。'));
 
   // 偵測與追蹤
   s = section('偵測與追蹤', 'DETECT');
@@ -1138,7 +1138,7 @@ function buildPanel() {
   // 連線
   s = section('連線', 'LINKS');
   row(s, '線條樣式', seg('segLine', () => S.lstyle, v => { S.lstyle = v; }, [['straight', '直線'], ['curve', '曲線'], ['wave', '波浪'], ['lightning', '閃電']]));
-  row(s, '連接率', seg('segRate', () => S.rate, v => { S.rate = parseFloat(v); }, [['0', '0'], ['0.25', '.25'], ['0.5', '.5'], ['0.75', '.75'], ['1', '1']]));
+  row(s, '連線率', seg('segRate', () => S.rate, v => { S.rate = parseFloat(v); }, [['0', '0'], ['0.25', '.25'], ['0.5', '.5'], ['0.75', '.75'], ['1', '1']]));
   row(s, '線條寬度', range('rLw', 'lw', 0.5, 8, 0.5, v => v + 'px'), 'rLw');
   const c2 = el('div', 'checks'); c2.append(check('cDash', '虛線（與 Dash 連動）', () => S.basic.dash, v => { S.basic.dash = v; })); s.append(c2);
 
@@ -1160,10 +1160,10 @@ function buildPanel() {
   row(s, '標籤樣式', seg('segLab', () => S.lab, v => { S.lab = v; }, [['block', '色塊'], ['outline', '外框'], ['plain', '純文字']]));
   row(s, '文字位置', seg('segTpos', () => S.tpos, v => { S.tpos = v; }, [['center', '中心'], ['top', '頂部'], ['bottom', '底部']]));
   row(s, '文字內容', seg('segTmode', () => S.tmode, v => { S.tmode = v; }, [['random', '隨機'], ['pos', '位置'], ['count', '數量']]));
-  row(s, '字體大小', seg('segFs', () => S.fsize, v => { S.fsize = parseInt(v, 10); }, [['10', '10'], ['12', '12'], ['16', '16'], ['18', '18'], ['20', '20']]));
+  row(s, '字型大小', seg('segFs', () => S.fsize, v => { S.fsize = parseInt(v, 10); }, [['10', '10'], ['12', '12'], ['16', '16'], ['18', '18'], ['20', '20']]));
   const sw = el('div', 'swatches'); sw.id = 'swatches';
   PALETTE.forEach((hx, i) => { const b = el('button', 'sw'); b.type = 'button'; b.style.background = hx; b.title = hx; b.setAttribute('aria-label', `顏色 ${hx}`); b.addEventListener('click', () => { S.color = i; syncAll(); }); sw.append(b); });
-  const rb = el('button', 'sw rainbow'); rb.type = 'button'; rb.title = '彩虹循環'; rb.setAttribute('aria-label', '彩虹循環'); rb.addEventListener('click', () => { S.color = RAINBOW; syncAll(); }); sw.append(rb);
+  const rb = el('button', 'sw rainbow'); rb.type = 'button'; rb.title = '彩虹輪轉'; rb.setAttribute('aria-label', '彩虹輪轉'); rb.addEventListener('click', () => { S.color = RAINBOW; syncAll(); }); sw.append(rb);
   binds.push(() => { [...sw.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i === S.color))); });
   row(s, '調色盤', sw);
   const c4 = el('div', 'checks');
