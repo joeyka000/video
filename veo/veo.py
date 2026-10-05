@@ -47,6 +47,9 @@ def models():
 
 
 def pick(kind):
+    env = os.environ.get('VEO_MODEL' if kind == 'veo' else 'IMAGE_MODEL')
+    if env:
+        return env if env.startswith('models/') else 'models/' + env
     names = [m['name'] for m in models()]
     if kind == 'veo':
         c = sorted([n for n in names if 'veo' in n], reverse=True)
@@ -74,7 +77,9 @@ def keyframe(path, ids):
             continue
         img = base64.b64encode(open(os.path.join(HERE, s['ref']), 'rb').read()).decode()
         body = {'contents': [{'parts': [{'inline_data': {'mime_type': 'image/jpeg', 'data': img}},
-                                        {'text': spec['character'] + ' ' + s['keyframe'] + ' Vertical 9:16 composition, photorealistic film still.'}]}]}
+                                        {'text': 'Use the person in this photo as the character (keep his face, glasses-free look and cap). '
+                                         + spec['character'] + ' ' + s['keyframe'] + ' ' + spec['style'] + ' Vertical 9:16 photorealistic film still.'}]}],
+                'generationConfig': {'responseModalities': ['IMAGE'], 'imageConfig': {'aspectRatio': '9:16'}}}
         r = call('POST', f'{API}/{model}:generateContent', body, 300)
         parts = r['candidates'][0]['content']['parts']
         data = next((p['inlineData']['data'] for p in parts if 'inlineData' in p), None)
@@ -100,7 +105,8 @@ def gen(path, ids, yes):
         kf = os.path.join(OUT, f"{s['id']}.png")
         if os.path.exists(kf):
             inst['image'] = {'bytesBase64Encoded': base64.b64encode(open(kf, 'rb').read()).decode(), 'mimeType': 'image/png'}
-        params = {'aspectRatio': spec.get('aspect', '9:16'), 'durationSeconds': s.get('seconds', 8),
+        params = {'personGeneration': 'allow_adult'} if os.path.exists(kf) else {}
+        params |= {'aspectRatio': spec.get('aspect', '9:16'), 'durationSeconds': s.get('seconds', 8),
                   'negativePrompt': spec.get('negative', '')}
         r = call('POST', f'{API}/{model}:predictLongRunning', {'instances': [inst], 'parameters': params}, 300)
         ops[s['id']] = r['name']
