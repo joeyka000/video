@@ -5,6 +5,7 @@
   2. 試片：預設 Veo 3.1 lite、720p、每段 4 秒。先給使用者看試片。
   3. 定稿：只重生使用者點頭的鏡頭；--tier fast 或 --tier standard，standard 另外要加 --final。
   4. 每個指令都先印出預估花費；超過 --budget（預設 2 美元）就拒絕；沒加 --yes 不會送出。
+     任何付費步驟都要先通知使用者並取得這一筆的明確同意，才可以加 --yes（不論金額多小）。
   5. 每次實際花費記在 out/spend.jsonl，`python veo.py spend` 看累計。
 
 金鑰：讀環境變數 GEMINI_API_KEY（在雲端環境設定裡加，不要貼在對話裡）。
