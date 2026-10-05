@@ -25,6 +25,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `references/footage.md`：實拍打光（on-set）、後製重新打光、影片精修（降噪、穩定、柔膚、去背、顏色匹配）、照片修圖、靜圖進 MV、「不過度美化」判準、自檢
 - `references/awesome-mv-index.md`：awesome 庫 29 支 MV／歌詞動畫／音訊反應／動態字型／生成藝術精選，依需求查詢表與可遷移的手法
 - `references/anime.md`：日系演出術語對照、實拍動漫化 ffmpeg 做法、風格方向
+- `references/masters.md`：向大師學——各國導演（Edgar Wright、Guy Ritchie、Wes Anderson、王家衛、朴贊郁、新海誠、今敏、庵野秀明、渡邊信一郎）與動畫 OP 演出家（山下清悟、石浜真史、湯淺政明、斎藤圭一郎）的手法，每條附原理、我們的做法、不該用的時候；題材→主語言選擇器；本 repo 的使用者回饋教訓（特效升級實拍、不取代實拍）
 - `templates/treatment.md`：treatment（風格聖經）填空範本，12 節，每欄附填寫提示
 - `templates/cuts.csv`：剪點表範本（`bar,beat,src,in,speed,label`），含 12 列範例
 - `assets/mv-kit.js`：MV 工具庫（全域 `MV`）：資料與等拍格、節拍、歌詞、數學與緩動、時間軸與轉場、字型排印、後製；畫面全是 t 的純函式
@@ -40,6 +41,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/footage.py`：實拍精修子命令（stabilize、denoise、sharpen、deflicker、skin、relight、match、photo、kenburns、upscale、slowmo），`--dry-run` 只印指令、`--preview 10` 只做前 10 秒
 
 ## 工作原則
+- 接剪輯案先讀 `references/masters.md`〈零〉的教訓，用〈六〉選擇器挑一個主語言＋最多一個副語言；特效是讓實拍升級，不能蓋掉或取代實拍
 - 素材原檔不動，輸出一律寫到 `./out/`，檔名加字尾（_cut、_sub、_9x16）；分析資料放 `./data/`（已在 `.gitignore`；`data/lyrics.json` 含整首歌詞、`data/audio.json` 是客戶歌曲的分析資料，都不要 commit）
 - 動手前先 `ffprobe` 看解析度、fps、長度、音軌
 - 轉檔預估超過一分鐘時，先用 10 秒片段試跑給我看，確認再跑全片
