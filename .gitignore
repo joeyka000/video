@@ -38,3 +38,8 @@ projects/*/music/*
 
 # 分析資料（audio.json、含整首歌詞的 lyrics.json）不進公開 repo
 data/
+
+# Veo 生成輸出、參考照片、填好角色的分鏡不進公開 repo
+veo/out/
+veo/ref*.jpg
+veo/shots.json

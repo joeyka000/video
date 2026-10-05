@@ -1,0 +1,37 @@
+{
+  "title": "カードハンター 騎士篇",
+  "aspect": "9:16",
+  "character": "<CHARACTER: 主角外觀描述（髮型、臉型、服裝），會接在每個鏡頭提示詞前面>",
+  "style": "Epic fantasy film look, overcast stormy sky, light rain, desaturated teal and steel-blue color grade, shallow depth of field, anamorphic lens, cinematic slow motion, ultra realistic, 24fps film grain.",
+  "negative": "cartoon, anime, text, watermark, logo, extra limbs, distorted face, blurry face",
+  "shots": [
+    {
+      "id": "s1",
+      "seconds": 8,
+      "ref": "ref.jpg",
+      "keyframe": "He kneels on one knee on a muddy battlefield, hundreds of trading cards stuck upright in the mud like fallen arrows around him, rain falling, stormy sky behind.",
+      "prompt": "Medium shot. He kneels on a muddy battlefield where hundreds of trading cards are stuck upright in the ground like fallen arrows. Rain falls. He slowly lifts his head and rises to his feet, cape moving in the wind. Slow push-in."
+    },
+    {
+      "id": "s2",
+      "seconds": 8,
+      "ref": "ref.jpg",
+      "keyframe": "Close-up portrait, rain drops on his armor, determined calm expression, stormy sky.",
+      "prompt": "Close-up. He looks up toward the horizon with a calm, determined expression, rain drops on his armor and cap, cape fluttering. Subtle slow dolly-in, thunder light flickers in the clouds."
+    },
+    {
+      "id": "s3",
+      "seconds": 8,
+      "ref": "ref.jpg",
+      "keyframe": "Seen from behind at low angle, standing alone on the battlefield facing a massive army of armored cavalry charging toward him through rain and dust.",
+      "prompt": "Low-angle shot from behind. He stands alone facing a massive army of armored cavalry charging toward him across the muddy field, dust and rain. He draws a long sword whose blade glows with golden holographic light like a rare foil trading card, and raises it high. Epic slow motion."
+    },
+    {
+      "id": "s4",
+      "seconds": 8,
+      "ref": "ref.jpg",
+      "keyframe": "Front view, he holds up a single glowing golden trading card in a clear protective slab, light bursting from it, rain frozen in the air.",
+      "prompt": "Front medium shot. He holds up a single trading card sealed in a clear protective case; it bursts with golden holographic light that pushes back the rain and lights up his face. He smiles slightly. Slow orbit around him."
+    }
+  ]
+}
