@@ -50,11 +50,11 @@ fi
 if command -v uv >/dev/null; then
   [ -x "$LAB/.venv/bin/python" ] || uv venv -q --python 3.11 "$LAB/.venv" >>"$LOG" 2>&1
   VIRTUAL_ENV="$LAB/.venv" uv pip install -q \
-    faster-whisper opencc auto-editor librosa soundfile playwright==1.56.0 >>"$LOG" 2>&1
+    faster-whisper opencc auto-editor librosa soundfile scipy pillow opencv-python-headless playwright==1.56.0 >>"$LOG" 2>&1
 else
   [ -x "$LAB/.venv/bin/python" ] || python3 -m venv "$LAB/.venv"
   "$LAB/.venv/bin/pip" install -q \
-    faster-whisper opencc auto-editor librosa soundfile playwright==1.56.0 >>"$LOG" 2>&1
+    faster-whisper opencc auto-editor librosa soundfile scipy pillow opencv-python-headless playwright==1.56.0 >>"$LOG" 2>&1
 fi
 # auto-editor 第一次執行會下載自己的執行檔，先跑一次
 "$LAB/.venv/bin/auto-editor" --version >>"$LOG" 2>&1 || warnings+=("auto-editor 執行檔下載失敗")

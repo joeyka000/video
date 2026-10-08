@@ -39,8 +39,18 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/qa.py`：成片 → `out/qa/report.md`（剪點對拍誤差、黑場、閃白、亮度）與每段落在 downbeat 抽格的拼圖
 - `scripts/testsong.py`：合成測試歌與真值 JSON，還沒拿到歌時先跑通流程
 - `scripts/footage.py`：實拍精修子命令（stabilize、denoise、sharpen、deflicker、skin、relight、match、photo、kenburns、upscale、slowmo），`--dry-run` 只印指令、`--preview 10` 只做前 10 秒
+- `scripts/seekkit.py`：Python seek(t) 引擎零件（`Src` 隨機存取影片、`cover`／`kenburns`／`scroll_page`、`text_sprite`／`fit_text`／`wrap_text`／`rise`／`type_on`、`scrim`／`glow_line`／`grain`／`halation`、`frame_rng`、`missing_glyphs`）
+- `scripts/frames.py`：引擎執行器（`still` 抽格、`sheet` 縮圖總覽＋評分表、`video` 切段平行渲染＋混音、`deliver` HEVC 兩段式壓到上傳上限內）
+- `scripts/review.py`：縮圖總覽評分關卡（`sheet` 從影片或圖檔出總覽、`gate` 全部 ≥ 8 才過、`diff` 兩輪對照）
+- `scripts/brand.py`：網址 → 品牌素材包（桌機／手機真截圖、區塊截圖、logo 原檔、依面積算的品牌色、字型、真實文案）
+- `references/review.md`：1–10 分錨點、評分紀律、禁用清單（老套）與替代做法、常見扣分原因
+- `templates/engine.py`：seek(t) 影片引擎範本（真截圖開場、跟著捲動的 callout、自動換行的片尾）
+- `templates/music.py`：原創合成配樂範本（段落表對齊畫面：intro／arp／light／groove／build／main／break／end）
 
 ## 工作原則
+- 規範總表在 repo 根目錄 `CLAUDE.md`；開新片走 `/new-video` 技能（一句話到交付），這個技能放各段細節
+- 影片是時間的函式：Python 片寫 `frame(t)`（`templates/engine.py`＋`scripts/seekkit.py`，`scripts/frames.py` 執行），網頁動畫寫 `render(t)`（D 段）
+- 正式渲染前過縮圖總覽關卡：`references/review.md`
 - 接剪輯案先讀 `references/masters.md`〈零〉的教訓，用〈六〉選擇器挑一個主語言＋最多一個副語言；特效是讓實拍升級，不能蓋掉或取代實拍
 - 素材原檔不動，輸出一律寫到 `./out/`，檔名加字尾（_cut、_sub、_9x16）；分析資料放 `./data/`（已在 `.gitignore`；`data/lyrics.json` 含整首歌詞、`data/audio.json` 是客戶歌曲的分析資料，都不要 commit）
 - 動手前先 `ffprobe` 看解析度、fps、長度、音軌
@@ -138,7 +148,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - 微互動（影片中對應「小動態」）：字卡、數字、圖示、底線等細節有精緻的進出場，不用預設淡入淡出湊數
 - 響應式（影片中對應「多比例與安全區」）：需要時輸出 9:16、1:1、16:9；文字避開 IG／TikTok／YouTube 介面遮擋區
 - 原創性：至少一個只屬於這個題材的設計巧思，避免模板感
-- 自檢方法：每段抽格拼成總覽圖逐張看；看完整片一次確認節奏；找出最弱的三處修改後再看一次
+- 自檢方法：縮圖總覽評分關卡（`references/review.md`）——每格 1–10 分附理由，修最差的三格重出，全部 ≥ 8 才渲全片；渲完看完整片一次確認節奏，成品再出一次總覽
 - MV 另依 `references/craft.md`〈六、視覺自檢清單〉的視覺自檢與 `references/editing.md`〈五、剪輯自檢清單〉的剪輯自檢（都是可量測的題目）；實拍精修另依 `references/footage.md`〈八、自檢清單〉
 
 ## 授權
