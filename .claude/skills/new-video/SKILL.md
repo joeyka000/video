@@ -23,14 +23,15 @@ effort: xhigh
 
 ## 1. 收素材
 - 網址 → `python VL/scripts/brand.py <網址> -o projects/<案名>/brand`，看 `brand.md`、`swatches.png`、截圖與 logo 候選（每張都要看過再用）
-- 影片 → `ffprobe` 規格；每支出時間碼縮圖（`ffmpeg -vf "fps=2,scale=180:-1,drawtext=…%{pts\:hms}…,tile=10x6"`）逐張看，記下每個動作的秒數；手持素材先穩定化（`VL/scripts/footage.py stabilize` 或 vidstab 兩段式）
+- 影片 → `ffprobe` 規格；每支出時間碼縮圖（`ffmpeg -vf "fps=2,scale=180:-1,drawtext=…%{pts\:hms}…,tile=10x6"`）逐張看，記下每個動作的秒數，以及每個鏡頭的功能（建立／主體／細節／反應／收）、主色、主形狀、主體位置（配對 match cut 用）；手持素材先穩定化（`VL/scripts/footage.py stabilize` 或 vidstab 兩段式）
 - 照片、歌 → 照 video-lab 技能 C 段（`analyze.py`）與 footage.md
 - 素材與成品放 `projects/<案名>/`（不進 git）
 
 ## 2. 概念與分鏡（寫進 plan.md）
-- 一句話概念＋**一個只屬於這個題材的巧思**（例：卡牌品牌的辦公室片＝「撕開一包」開場、PSA 卡盒標籤當段落標題）
+- 一句話概念＋**一個只屬於這個題材的巧思**（例：卡牌品牌的辦公室片＝「撕開一包」開場、PSA 卡盒標籤當段落標題）；照 `VL/references/story.md`〈一〉推導（題材的真東西 → 結構裝置 → 轉場動詞），五題概念壓力測試的答案寫進 plan.md，有一題不過就重想
+- 結構排成五段（鉤子、建立、展開、高點、收；秒數表見 story.md〈二〉），寫出遞進方向（遠→近、白天→夜晚…選一條）
 - 讀 `VL/references/masters.md`〈零〉的使用者回饋與〈六〉選擇器，挑一個主語言
-- 鏡頭表：起訖秒（段落邊界落在小節上：100 BPM 一小節 2.4 秒）、素材與入點、字卡內容（真實文案）、特效（每個特效寫理由）
+- 鏡頭表：起訖秒（段落邊界落在小節上：100 BPM 一小節 2.4 秒）、功能、景別、素材與入點、字卡內容（真實文案）、特效（每個特效寫理由）。同一主體連續兩刀景別差兩級或換角度；入點用 `python VL/scripts/flow.py pick <素材> --from --to --dur [--clean bottom]` 挑
 - 對照 `VL/references/review.md`〈禁用清單〉，有就換掉
 
 ## 3. 寫 seek(t) 引擎
@@ -47,18 +48,26 @@ python VL/scripts/review.py gate projects/<案名>/qa/sheet.review.json
 ```
 沒過：修最差的 3 格 → 重出（round 自動 +1）→ 重評 → `review.py diff` 看進步；第 4 輪還沒過就停下來給使用者看分數表。
 
+剪點關卡（同樣全部 ≥ 8 才渲全片；engine 的 `SHOTS` 就是剪點表）：
+```
+python VL/scripts/flow.py check --engine projects/<案名>/work/engine.py -o projects/<案名>/qa/flow
+# 看 qa/flow/cuts.jpg 與 report.md，依 VL/references/review.md〈剪點評分〉逐刀填 qa/flow/cuts.review.json
+python VL/scripts/review.py gate projects/<案名>/qa/flow/cuts.review.json
+```
+
 ## 5. 試渲（看動態與聲音）
 - 配樂：複製 `VL/templates/music.py`，改 `BPM`、`DUR`、`SECTIONS`、`LOGO`、`TICKS` 對齊鏡頭表，輸出 wav，在引擎設 `AUDIO`
-- `frames.py video engine.py -o qa/test.mp4 --from <大招前 3 秒> --to <後 7 秒>`，再 `review.py sheet --video qa/test.mp4 --every 0.5` 看轉場與進場節奏；聽落拍有沒有對到畫面
+- `frames.py video engine.py -o qa/test.mp4 --from <大招前 3 秒> --to <後 7 秒>`，再 `review.py sheet --video qa/test.mp4 --every 0.5` 看轉場與進場節奏；聽落拍有沒有對到畫面；`flow.py check qa/test.mp4 -o qa/flow_test` 看入點糊、重複格（engine 模式只看得到剪點前後 7 格）
 
 ## 6. 全片與交付
 ```
 python VL/scripts/frames.py video projects/<案名>/work/engine.py -o projects/<案名>/deliver/master.mp4   # run_in_background
 python VL/scripts/frames.py deliver projects/<案名>/deliver/master.mp4 -o projects/<案名>/deliver/<名稱>.mp4
 python VL/scripts/review.py sheet --video projects/<案名>/deliver/<名稱>.mp4 -o projects/<案名>/qa/final.jpg --n 32
+python VL/scripts/flow.py check projects/<案名>/deliver/<名稱>.mp4 -o projects/<案名>/qa/flow_final
 ```
 - 成品總覽再看一次（壓縮後字有沒有糊、有沒有黑格）；分段渲染的中間檔用完即刪
-- 用 SendUserFile 傳成品（≤ 30 MiB），回覆附：長度與規格、能不能直接發、段落內容、自己補的假設、最後一輪評分（平均／最低）、要使用者確認的地方
+- 用 SendUserFile 傳成品（≤ 30 MiB），回覆附：長度與規格、能不能直接發、段落內容、自己補的假設、最後一輪評分（縮圖與剪點各自的平均／最低）、`flow_final/report.md` 的平均鏡頭長、實拍不到半個畫面的時間、剪輯速度 vs 音樂能量、要使用者確認的地方
 
 ## 7. 收尾
 - 這次學到、可以重複用的做法：零件寫回 `VL/scripts/seekkit.py`，規則寫回 `CLAUDE.md` 或 `VL/references/`；使用者的回饋寫進 `VL/references/masters.md`〈零〉

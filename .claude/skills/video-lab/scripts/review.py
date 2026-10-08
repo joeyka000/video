@@ -4,6 +4,7 @@
   python review.py sheet --video out/test.mp4 -o out/qa/sheet.jpg [--n 24 | --every 1.5 | --at 1,4,9]
   python review.py sheet --images out/stills/*.jpg -o out/qa/sheet.jpg     # 檔名含秒數時會標上
   python review.py gate out/qa/sheet.review.json [--min 8]                # 通過 exit 0；沒過 exit 1 並列出最差 3 格
+  python review.py gate qa/flow/cuts.review.json                         # 剪點評分表（flow.py check 產生），同一個關卡
   python review.py diff old.review.json new.review.json                    # 兩輪分數對照
 
 seek(t) 引擎直接用 `frames.py sheet engine.py -o ...`（同一個版面與評分表）。
@@ -108,7 +109,8 @@ def cmd_gate(a):
     worst = sorted(cells, key=lambda c: c['score'])[:3]
     low = [c for c in cells if c['score'] < need]
     avg = sum(c['score'] for c in cells) / len(cells)
-    print(f'第 {r.get("round", 1)} 輪：{len(cells)} 格，平均 {avg:.1f}，最低 {worst[0]["score"]}，未達 {need} 分 {len(low)} 格')
+    u = '刀' if r.get('kind') == 'cuts' else '格'
+    print(f'第 {r.get("round", 1)} 輪：{len(cells)} {u}，平均 {avg:.1f}，最低 {worst[0]["score"]}，未達 {need} 分 {len(low)} {u}')
     for c in worst:
         print(f'  #{c["i"]:<3} {c["t"]:7.2f}s  {c["score"]:>2} 分  {c.get("why", "")}' + (f'  → 改：{c["fix"]}' if c.get('fix') else ''))
     if nowhy:
@@ -116,9 +118,9 @@ def cmd_gate(a):
     if nofix:
         print(f'低於 {need} 分卻沒寫要怎麼改：#{nofix}')
     if low or nowhy or nofix:
-        print('未通過：修最差的 3 格 → 重出總覽（round +1）→ 重新評分。')
+        print(f'未通過：修最差的 3 {u} → ' + ('重跑 flow.py' if u == '刀' else '重出總覽') + '（round +1）→ 重新評分。')
         sys.exit(1)
-    print('通過：全部 ≥ %d 分，可以正式渲染。' % need)
+    print(f'通過：全部 ≥ {need} 分' + ('（剪點）' if u == '刀' else '') + '，可以正式渲染。')
 
 
 def cmd_diff(a):

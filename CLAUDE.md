@@ -13,6 +13,11 @@
 - 好處：任何一格都能隨時 seek 出來看、拼縮圖總覽、切段平行渲染，預覽和成品一模一樣
 - 工具：`seekkit.py`（零件）、`templates/engine.py`（範本）、`frames.py`（抽格／總覽／平行渲染／交付壓檔）、`render.py`（HTML）
 
+## 剪輯邏輯（細節在 `references/story.md`）
+- 概念從題材長出來：題材的真東西 → 結構裝置 → 轉場動詞；換成競品還成立就太泛
+- 每一刀都要讓觀眾知道、感覺或期待一件事；同一主體連續兩刀景別差兩級或換角度；視線、方向、光色在段落中間要接得上
+- 選鏡依功能不依美，入點從清楚、主體在的那一格開始（`flow.py pick`）
+
 ## 禁用（老套）
 - 漸層背景＋置中大標題 → 真實畫面當底、標題對齊網格靠一側
 - 全部淡入淡出 → 遮罩升起、逐字、線條畫出、在拍上硬切；淡出只留給片尾收進品牌色
@@ -29,8 +34,9 @@
 1. 出縮圖總覽：`frames.py sheet engine.py -o qa/sheet.jpg`（引擎裡寫 `MARKS` 指定抽哪幾格）
 2. 每格依 `references/review.md` 的錨點打 1–10 分，寫進 `qa/sheet.review.json`（每格都要寫理由，< 8 要寫怎麼改）
 3. `review.py gate qa/sheet.review.json`：沒過就修最差的 3 格 → 重出總覽 → 重評
+3b. 剪點關卡：`flow.py check --engine engine.py -o qa/flow` → 依 `references/review.md`〈剪點評分〉評 `qa/flow/cuts.review.json` → `review.py gate`；同樣全部 ≥ 8（規則在 `references/story.md`）
 4. 全部 ≥ 8 才做 10 秒試渲，再全片渲染（放背景跑）；第 4 輪還過不了就把分數表給使用者看，不硬拉分
-5. 交付時附最後一輪的平均分、最低分、修了什麼
+5. 交付時附最後一輪的平均分、最低分（縮圖、剪點各一組）、修了什麼，以及成品 `flow.py check` 的實拍覆蓋時間
 
 ## 一定要先問的事
 - **花錢**：任何付費生成（Veo、Nano Banana 等，不論金額多小）送出前先說明要做什麼、哪個等級、預估金額，等使用者明確同意這一筆；前一次同意不延用。一律先用便宜方式試
