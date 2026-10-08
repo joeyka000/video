@@ -11,7 +11,9 @@ engine.py 約定（Python）：
   python frames.py sheet  engine.py -o sheet.jpg        → 縮圖總覽（每格編號＋秒數）＋ sheet.review.json 評分表
          [--at 0.5,3,7 | --every 1.5 | --n 24] [--cols 6] [--width 270]
   python frames.py video  engine.py -o master.mp4 [--jobs 4] [--from 0 --to 10] [--audio a.wav] [--crf 14]
-  python frames.py deliver master.mp4 -o post.mp4 [--max-mb 29]   → HEVC 兩段式，壓在上傳上限內（雲端傳檔上限 30 MiB）
+  python frames.py deliver master.mp4 -o post.mp4 [--max-mb 29] [--grain 3]   → HEVC 兩段式，壓在上傳上限內（雲端傳檔上限 30 MiB）
+         --grain：壓檔前加一層很淡的動態顆粒（ffmpeg noise）。母帶的平滑漸層（片尾收色、暗場）沒有顆粒時用，
+                  壓完 finish.py 量到色階 > 8 就加 --grain 3 重壓（finish.md〈八〉第 2 條）
 
 正式渲染前一定先 sheet → 評分 → 修 → review.py gate 通過，再 video（見 references/review.md）。
 """
@@ -137,7 +139,8 @@ def cmd_deliver(a):
         sys.exit(f'{dur:.0f} 秒要壓進 {a.max_mb} MB，影像只剩 {vk} kbps，畫質會崩：改短或改用雲端連結交付')
     vk = min(vk, a.cap_kbps)
     log = os.path.join(tempfile.mkdtemp(), 'x265')
-    base = ['ffmpeg', '-v', 'error', '-y', '-i', a.master, '-c:v', 'libx265', '-preset', 'slow', '-b:v', f'{vk}k', '-tag:v', 'hvc1',
+    vf = ['-vf', f'noise=alls={a.grain}:allf=t+u'] if a.grain > 0 else []
+    base = ['ffmpeg', '-v', 'error', '-y', '-i', a.master] + vf + ['-c:v', 'libx265', '-preset', 'slow', '-b:v', f'{vk}k', '-tag:v', 'hvc1',
             '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
     # aq-mode=3：位元多分給暗部（暗部漸層不糊成色塊）；psy-rdoq=2：保留顆粒與紋理，不把它當雜訊抹平
     # 實測（finish.md〈四〉）：暗部漸層＋顆粒 0.016 壓 3.8 Mbps，色階 15.8 px → 3.0 px
@@ -185,6 +188,7 @@ def main():
     s.add_argument('-o', '--out', required=True)
     s.add_argument('--max-mb', type=float, default=29)
     s.add_argument('--cap-kbps', type=int, default=12000, help='短片不必塞滿上限')
+    s.add_argument('--grain', type=int, default=0, help='壓檔前加動態顆粒（0–255 尺度的振幅；3 = 很淡）')
     a = p.parse_args()
     {'still': cmd_still, 'sheet': cmd_sheet, 'video': cmd_video, '_chunk': cmd_chunk, 'deliver': cmd_deliver}[a.cmd](a)
 

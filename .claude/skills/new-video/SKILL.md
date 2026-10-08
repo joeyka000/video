@@ -69,7 +69,7 @@ python VL/scripts/review.py sheet --video projects/<案名>/deliver/<名稱>.mp4
 python VL/scripts/flow.py check projects/<案名>/deliver/<名稱>.mp4 -o projects/<案名>/qa/flow_final
 python VL/scripts/finish.py check projects/<案名>/deliver/<名稱>.mp4 --flow projects/<案名>/qa/flow_final/flow.json -o projects/<案名>/qa/finish_final
 ```
-- `finish_final/report.md` 的「要處理」逐條處理或在評分表寫理由（夜景死黑、復古偏色這種刻意的）；色階 > 8 就把 grain 拉到 0.015 以上重壓
+- `finish_final/report.md` 的「要處理」逐條處理或在評分表寫理由（夜景死黑、復古偏色這種刻意的）；色階 > 8：母帶的 grain 拉到 0.016 以上重渲，來不及重渲就 `frames.py deliver … --grain 3` 重壓（實測 38 → 12.6 px，finish.md〈八〉）
 - 成品總覽再看一次（壓縮後字有沒有糊、有沒有黑格）；分段渲染的中間檔用完即刪
 - 用 SendUserFile 傳成品（≤ 30 MiB），回覆附：長度與規格、能不能直接發、段落內容、自己補的假設、最後一輪評分（縮圖與剪點各自的平均／最低）、`flow_final/report.md` 的平均鏡頭長、實拍不到半個畫面的時間、剪輯速度 vs 音樂能量、`finish_final/report.md` 的黑位標準差與偏色分散、用了哪個 mood、要使用者確認的地方
 
