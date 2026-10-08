@@ -265,6 +265,17 @@ def type_on(c, text, x, y, e, size, cps=18, **kw):
         xx += spr.shape[1] - size * 0.08
 
 
+
+def rounded_rect_path(x0, y0, x1, y1, r, u=1.0, n=160):
+    """圓角矩形外框的點列（從右上角順時針），u 0–1 只取前段，用來把 glow_line「畫」出一圈。
+    產品片用法：圈住真實截圖上的按鈕（座標用截圖原圖 px 經同一個 cover／zoom 轉換算出）。"""
+    pts = []
+    for cx, cy, a0 in ((x1 - r, y0 + r, -90), (x1 - r, y1 - r, 0), (x0 + r, y1 - r, 90), (x0 + r, y0 + r, 180)):
+        for a in np.linspace(a0, a0 + 90, n // 4):
+            pts.append((cx + r * math.cos(math.radians(a)), cy + r * math.sin(math.radians(a))))
+    pts.append(pts[0])
+    return np.array(pts[:max(2, int(len(pts) * u))], np.float32)
+
 # ───────── 合成 ─────────
 def screen(c, add):
     c[:] = 1 - (1 - c) * (1 - np.clip(add, 0, 1))
