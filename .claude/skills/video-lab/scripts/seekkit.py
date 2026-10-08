@@ -431,6 +431,59 @@ def grain(c, t, fps, amt=0.016):
     c += n[..., None] * amt * (0.35 + 2.6 * L * (1 - L))
 
 
+SERIF_R = '/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc'
+CJK_JP = 0  # .ttc 內的日文字面
+
+
+@functools.lru_cache(maxsize=256)
+def _soft_shadow(text, size, font, index, tracking):
+    s = text_sprite(text, size, font, index, tracking, (1.0, 1.0, 1.0), palt=False)
+    pad = int(size * 0.8)
+    a = cv2.GaussianBlur(np.pad(s[..., 3], pad), (0, 0), size * 0.28)
+    out = np.zeros(a.shape + (4,), np.float32)
+    out[..., 3] = np.clip(a * 1.6, 0, 1)
+    return s, out, pad
+
+
+def brightness(c, x0, y0, x1, y1):
+    """一塊區域的亮度（0–1，Rec.709 luma 平均，每 4 px 取一點）。"""
+    reg = c[max(0, y0):y1:4, max(0, x0):x1:4]
+    return float((reg[..., 0] * 0.2126 + reg[..., 1] * 0.7152 + reg[..., 2] * 0.0722).mean())
+
+
+@functools.lru_cache(maxsize=8)
+def _pool(w, h, cx, cy, rx, ry):
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    return np.exp(-(((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2) * 1.1)[..., None]
+
+
+def caption(c, lines, cx, cy, op=1.0, gap=0.3, align='center', dim=(0.20, 0.34)):
+    """有質感的字幕／標註塊（峇里島寶可夢片使用者退件後重做的版本，references/finish.md〈六〉）：
+    lines：由上往下 [(字, 字級, 字型, 字面, 字距, 顏色, 不透明度), ...]，例：日文原句小字＋中文翻譯；
+    cy：整塊的垂直中心；align='center' 以 cx 置中，'left' 以 cx 為左緣。
+    可讀性不靠描邊、不靠整條灰帶：字底下一個很寬的柔橢圓壓暗＋貼著筆畫的寬柔陰影，兩者都依底下的亮度加減
+    （暗底幾乎不動，白床單、正午地板才壓多），看起來像畫面自己暗下去。op＝整塊不透明度（整句淡入淡出 3–4 格）。"""
+    if op <= 0:
+        return
+    sp = [_soft_shadow(t, sz, f, ix, tr) for t, sz, f, ix, tr, _, _ in lines]
+    hs = [s[0].shape[0] for s in sp]
+    ws = [s[0].shape[1] for s in sp]
+    gaps = [lines[i][1] * gap for i in range(len(lines) - 1)]
+    total = sum(hs) + sum(gaps)
+    bw = max(ws)
+    bx0 = cx - bw / 2 if align == 'center' else cx
+    h, w = c.shape[:2]
+    k = float(np.clip((brightness(c, int(bx0) - 40, int(cy - total / 2) - 30, int(bx0 + bw) + 40, int(cy + total / 2) + 30) - 0.36) / 0.38, 0, 1))
+    pcx = int(round((bx0 + bw / 2) / 8) * 8)
+    c *= 1 - (dim[0] + dim[1] * k) * op * _pool(w, h, pcx, int(round(cy / 8) * 8), int(bw / 2 + 200) // 8 * 8, int(total / 2 + 90) // 8 * 8)
+    y = cy - total / 2
+    for (t, sz, f, ix, tr, col, al), (_, sh, pad), hh, ww, g in zip(lines, sp, hs, ws, gaps + [0]):
+        x = cx - ww / 2 if align == 'center' else cx
+        blit(c, sh, x - pad, y - pad + sz * 0.06, op * al * (0.55 + 0.35 * k))
+        blit(c, text_sprite(t, sz, f, ix, tr, col, palt=False), x, y, op * al)
+        y += hh + g
+
+
 def keep_sharp(img, rect, bg=None, blur=7, feather=6):
     """只留 rect（x0, y0, x1, y1）清楚，其他做成淺景深糊掉：遮登機證條碼、證件號碼、背景螢幕上別人的影視內容。
     糊在 1/4 解析度算（blur=7 ≈ 全解析度 28 px，條碼與小字完全讀不出）；feather 要小，條碼才不會落在半清楚的羽化帶。
