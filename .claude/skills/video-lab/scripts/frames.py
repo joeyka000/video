@@ -139,8 +139,11 @@ def cmd_deliver(a):
     log = os.path.join(tempfile.mkdtemp(), 'x265')
     base = ['ffmpeg', '-v', 'error', '-y', '-i', a.master, '-c:v', 'libx265', '-preset', 'slow', '-b:v', f'{vk}k', '-tag:v', 'hvc1',
             '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
-    subprocess.run(base + ['-x265-params', f'pass=1:stats={log}:log-level=error', '-an', '-f', 'null', '/dev/null'], check=True)
-    subprocess.run(base + ['-x265-params', f'pass=2:stats={log}:log-level=error', '-c:a', 'aac', '-b:a', '192k',
+    # aq-mode=3：位元多分給暗部（暗部漸層不糊成色塊）；psy-rdoq=2：保留顆粒與紋理，不把它當雜訊抹平
+    # 實測（finish.md〈四〉）：暗部漸層＋顆粒 0.016 壓 3.8 Mbps，色階 15.8 px → 3.0 px
+    xp = 'aq-mode=3:aq-strength=1.2:psy-rdoq=2:log-level=error'
+    subprocess.run(base + ['-x265-params', f'pass=1:stats={log}:{xp}', '-an', '-f', 'null', '/dev/null'], check=True)
+    subprocess.run(base + ['-x265-params', f'pass=2:stats={log}:{xp}', '-c:a', 'aac', '-b:a', '192k',
                            '-movflags', '+faststart', a.out], check=True)
     mb = os.path.getsize(a.out) / 1024 / 1024
     print(f'{a.out}  {mb:.1f} MiB  影像 {vk} kbps  {dur:.1f} 秒')

@@ -10,6 +10,11 @@
   1. 開場不是「漸層＋置中標題」：真實頁面截圖當畫面，標題從基線遮罩升起、靠左對齊網格
   2. 進場不是全部淡入：rise（遮罩升起）、逐字、線條畫出，各有不同節奏
   3. 資訊字卡貼著內容（指向畫面裡的東西），不是角落小標
+
+質感（references/finish.md）：
+  - 網頁截圖、UI、logo 不調色（品牌色要準）；實拍鏡頭才走 look.py：face_safe（統一＋調色＋光＋臉）→ match 對齊代表鏡頭
+  - 先跑 `look.py board` 選 MOOD；字一律 text_sprite＋blit／rise（次像素，不會抖）；快速運動包 mblur
+  - 最後 grain／film → to_u8（預設抖色，漸層壓檔後不會一圈一圈）
 """
 import json
 import os
@@ -91,6 +96,15 @@ def render_shot(s, t):
         y = scroll_y(t)
         return scroll_page(page_img(p['name']), 0, W, H, y, y)
     return np.ones((H, W, 3), np.float32) * INK
+
+
+# ───────── 實拍鏡頭（這份範本沒用到；有影片素材時照這個寫）─────────
+# from look import face_safe, film, match, stats
+# from seekkit import src, mblur
+# MOOD = 'clean'                                     # look.py board 選出來的
+# REF = stats(face_safe(src(V1).at(7.4), MOOD))      # 全片代表鏡頭：白天、有中性色（牆、衣服、桌面）
+# def footage(path, t_src):
+#     return match(face_safe(src(path).at(t_src, blend=True), MOOD), REF, 0.7)
 
 
 # ───────── 疊層 ─────────

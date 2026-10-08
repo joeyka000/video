@@ -27,6 +27,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `references/awesome-mv-index.md`：awesome 庫 29 支 MV／歌詞動畫／音訊反應／動態字型／生成藝術精選，依需求查詢表與可遷移的手法
 - `references/anime.md`：日系演出術語對照、實拍動漫化 ffmpeg 做法、風格方向
 - `references/story.md`：剪輯邏輯與概念美感（非 MV 片為主，序列到節奏對 MV 也適用）：概念從題材長出來的三層推導與五題壓力測試、短片五段弧線、序列文法（景別跳兩級、跳接當風格）、剪點五件事（視線、方向、動作、光色、形狀對位）、閱讀時間、入點與依功能選鏡、緩急與對比曲線、節制預算、`flow.py` 的量化門檻、剪輯邏輯自檢
+- `references/finish.md`：高級質感：高級感的三層（影像本身、看不見的精度、節制）、每個鏡頭的處理順序（統一 → 調色 → 光 → 臉 → 對齊 → 合成 → 膠片 → 抖色輸出）、look board 選 look、mood 對照表、seekkit 內建的精度修正與實測數字、光與特效的分寸、字的質感、`finish.py` 門檻、質感自檢
 - `references/masters.md`：向大師學——各國導演（Edgar Wright、Guy Ritchie、Wes Anderson、王家衛、朴贊郁、新海誠、今敏、庵野秀明、渡邊信一郎）與動畫 OP 演出家（山下清悟、石浜真史、湯淺政明、斎藤圭一郎）的手法，每條附原理、我們的做法、不該用的時候；題材→主語言選擇器；本 repo 的使用者回饋教訓（特效升級實拍、不取代實拍）
 - `templates/treatment.md`：treatment（風格聖經）填空範本，12 節，每欄附填寫提示
 - `templates/cuts.csv`：剪點表範本（`bar,beat,src,in,speed,label`），含 12 列範例
@@ -38,12 +39,15 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/align.py`：歌詞文字 → `data/lyrics.json` 逐字時間碼（faster-whisper，或 `--from-json` 吃現成時間碼）
 - `scripts/render.py`：HTML `render(t)` → mp4／透明 mov／webm、預覽拼圖、剪點拼圖、子格動態模糊、4K
 - `scripts/cutlist.py`：cuts.csv ＋ audio.json → 踩拍 montage（精準到格）＋ `OUT.cuts.json`
+- `scripts/look.py`：調色與膠片質感（`normalize`／`color`／`tone` 柔肩／`glow`／`anamorphic`／`face_safe`／`match`＋`stats` 鏡頭對齊／`film` 顆粒暗角／`light_leak`／`holo_sweep`／`glints`；mood：clean、soft、day、golden、aot、night、bw）；`look.py board` 同一批素材套不同 mood 的對照表（格頭有質感數字）
+- `scripts/finishtest.py`：看不見的精度回歸測試（緩推不閃、字不抖、漸層沒色階、標點擠壓、調色對齊）；改過 seekkit／look／finish 之後跑
+- `scripts/finish.py`：質感檢查（壓縮後的成片或 engine）：每個鏡頭的高光硬切、死黑、黑位與中性色是否全片統一、顏色爆掉、膚色角度、漸層色階 → `report.md`、`grade.jpg`、`grade.png`
 - `scripts/flow.py`：剪接流暢度（`check`：每個剪點的視線跳、方向、景別、明暗、色溫、跳接、入點糊，每個鏡頭的閱讀時間、重複格、實拍覆蓋率，整支片的節奏 vs 音樂能量 → `report.md`、`cuts.jpg`、`cuts.review.json`、`pace.png`；`--engine engine.py` 在正式渲染前只渲剪點前後；`pick`：幫一個鏡頭挑入點）
 - `scripts/qa.py`：成片 → `out/qa/report.md`（剪點對拍誤差、黑場、閃白、亮度）與每段落在 downbeat 抽格的拼圖
 - `scripts/testsong.py`：合成測試歌與真值 JSON，還沒拿到歌時先跑通流程
 - `scripts/footage.py`：實拍精修子命令（stabilize、denoise、sharpen、deflicker、skin、relight、match、photo、kenburns、upscale、slowmo），`--dry-run` 只印指令、`--preview 10` 只做前 10 秒
-- `scripts/seekkit.py`：Python seek(t) 引擎零件（`Src` 隨機存取影片、`cover`／`kenburns`／`scroll_page`、`text_sprite`／`fit_text`／`wrap_text`／`rise`／`type_on`、`scrim`／`glow_line`／`grain`／`halation`、`frame_rng`、`missing_glyphs`）
-- `scripts/frames.py`：引擎執行器（`still` 抽格、`sheet` 縮圖總覽＋評分表、`video` 切段平行渲染＋混音、`deliver` HEVC 兩段式壓到上傳上限內）
+- `scripts/seekkit.py`：Python seek(t) 引擎零件（`Src` 隨機存取影片、`cover`／`kenburns`／`scroll_page`（大圖先 INTER_AREA 縮階，緩推不閃）、`text_sprite`（兩倍大畫再縮、標題自動擠壓連續標點）／`fit_text`／`wrap_text`／`blit`（次像素、預乘 alpha）／`rise`／`type_on`、`scrim`／`glow_line`／`grain`／`halation`、`mblur` 動態模糊、`to_u8`（預設抖色）、`frame_rng`、`missing_glyphs`）
+- `scripts/frames.py`：引擎執行器（`still` 抽格、`sheet` 縮圖總覽＋評分表、`video` 切段平行渲染＋混音、`deliver` HEVC 兩段式壓到上傳上限內，帶暗部與顆粒保護參數 `aq-mode=3:psy-rdoq=2`）
 - `scripts/review.py`：縮圖總覽評分關卡（`sheet` 從影片或圖檔出總覽、`gate` 全部 ≥ 8 才過、`diff` 兩輪對照）；`gate` 也吃 `flow.py` 的剪點評分表
 - `scripts/brand.py`：網址 → 品牌素材包（桌機／手機真截圖、區塊截圖、logo 原檔、依面積算的品牌色、字型、真實文案）
 - `references/easel.md`：Easel 技能庫索引：值得用的腳本與用法、花錢與發文的禁區、簡轉繁規則
@@ -56,6 +60,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - 影片是時間的函式：Python 片寫 `frame(t)`（`templates/engine.py`＋`scripts/seekkit.py`，`scripts/frames.py` 執行），網頁動畫寫 `render(t)`（D 段）
 - 正式渲染前過縮圖總覽關卡：`references/review.md`
 - 接剪輯案先讀 `references/masters.md`〈零〉的教訓，用〈六〉選擇器挑一個主語言＋最多一個副語言；特效是讓實拍升級，不能蓋掉或取代實拍
+- 實拍要調色先讀 `references/finish.md`〈一〉〈二〉：用 `look.py board` 選一個 mood，每個鏡頭走 face_safe → match → film；截圖、UI、logo 不調色
 - 剪之前先讀 `references/story.md`〈一〉〈二〉：概念要過五題壓力測試、結構排成五段；選鏡依功能不依美，入點用 `flow.py pick`；剪完用 `flow.py check` 看每一刀
 - 素材原檔不動，輸出一律寫到 `./out/`，檔名加字尾（_cut、_sub、_9x16）；分析資料放 `./data/`（已在 `.gitignore`；`data/lyrics.json` 含整首歌詞、`data/audio.json` 是客戶歌曲的分析資料，都不要 commit）
 - 動手前先 `ffprobe` 看解析度、fps、長度、音軌
@@ -155,7 +160,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - 響應式（影片中對應「多比例與安全區」）：需要時輸出 9:16、1:1、16:9；文字避開 IG／TikTok／YouTube 介面遮擋區
 - 原創性：至少一個只屬於這個題材的設計巧思，避免模板感
 - 自檢方法：縮圖總覽評分關卡＋剪點評分關卡（`references/review.md`）——每格、每刀 1–10 分附理由，修最差的三個重出，全部 ≥ 8 才渲全片；渲完看完整片一次確認節奏，成品再出一次總覽、再跑一次 `flow.py check`
-- 剪輯邏輯另依 `references/story.md`〈九、剪輯邏輯自檢〉
+- 剪輯邏輯另依 `references/story.md`〈九、剪輯邏輯自檢〉；質感另依 `references/finish.md`〈九、質感自檢〉，成片跑 `finish.py check`
 - MV 另依 `references/craft.md`〈六、視覺自檢清單〉的視覺自檢與 `references/editing.md`〈五、剪輯自檢清單〉的剪輯自檢（都是可量測的題目）；實拍精修另依 `references/footage.md`〈八、自檢清單〉
 
 ## 授權

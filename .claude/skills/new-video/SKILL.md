@@ -33,12 +33,14 @@ effort: xhigh
 - 讀 `VL/references/masters.md`〈零〉的使用者回饋與〈六〉選擇器，挑一個主語言
 - 鏡頭表：起訖秒（段落邊界落在小節上：100 BPM 一小節 2.4 秒）、功能、景別、素材與入點、字卡內容（真實文案）、特效（每個特效寫理由）。同一主體連續兩刀景別差兩級或換角度；入點用 `python VL/scripts/flow.py pick <素材> --from --to --dur [--clean bottom]` 挑
 - 對照 `VL/references/review.md`〈禁用清單〉，有就換掉
+- 有實拍素材：`python VL/scripts/look.py board <5–8 格代表素材> --moods clean,soft,day,golden,aot -o projects/<案名>/qa/look_board.jpg`，挑一個 mood 寫進 plan.md（刪掉格頭有紅字的；挑法見 `VL/references/finish.md`〈二〉〈三〉），look board 跟著概念一起給使用者看
 
 ## 3. 寫 seek(t) 引擎
 - 複製 `VL/templates/engine.py` → `projects/<案名>/work/engine.py`；零件用 `VL/scripts/seekkit.py`（`Src`、`kenburns`、`scroll_page`、`rise`、`type_on`、`fit_text`、`wrap_text`、`glow_line`、`scrim`、`grain`…）
 - 字多、版面複雜或要網頁特效時改走 HTML `render(t)`（video-lab 技能 D、G 段，`VL/scripts/render.py`）
 - `MARKS` 列出要評分的格：每段代表格、每個大招峰值、字卡完全進場、轉場正中、片頭第一格內容、片尾定格
-- 所有字用 `fit_text`／`wrap_text`；新字串先 `missing_glyphs()` 查豆腐字
+- 所有字用 `fit_text`／`wrap_text`；新字串先 `missing_glyphs()` 查豆腐字；移動中的字用 `blit`／`rise`（次像素），不要自己 `int()` 位置
+- 實拍鏡頭：`face_safe(素材, MOOD)` → `match(…, REF, 0.7)`；截圖、UI、logo 不調色；快速運動包 `mblur`；手機原圖用 `image(path, max_side=2×輸出長邊)`
 
 ## 4. 縮圖總覽關卡（沒過不准渲全片）
 ```
@@ -65,9 +67,11 @@ python VL/scripts/frames.py video projects/<案名>/work/engine.py -o projects/<
 python VL/scripts/frames.py deliver projects/<案名>/deliver/master.mp4 -o projects/<案名>/deliver/<名稱>.mp4
 python VL/scripts/review.py sheet --video projects/<案名>/deliver/<名稱>.mp4 -o projects/<案名>/qa/final.jpg --n 32
 python VL/scripts/flow.py check projects/<案名>/deliver/<名稱>.mp4 -o projects/<案名>/qa/flow_final
+python VL/scripts/finish.py check projects/<案名>/deliver/<名稱>.mp4 --flow projects/<案名>/qa/flow_final/flow.json -o projects/<案名>/qa/finish_final
 ```
+- `finish_final/report.md` 的「要處理」逐條處理或在評分表寫理由（夜景死黑、復古偏色這種刻意的）；色階 > 8 就把 grain 拉到 0.015 以上重壓
 - 成品總覽再看一次（壓縮後字有沒有糊、有沒有黑格）；分段渲染的中間檔用完即刪
-- 用 SendUserFile 傳成品（≤ 30 MiB），回覆附：長度與規格、能不能直接發、段落內容、自己補的假設、最後一輪評分（縮圖與剪點各自的平均／最低）、`flow_final/report.md` 的平均鏡頭長、實拍不到半個畫面的時間、剪輯速度 vs 音樂能量、要使用者確認的地方
+- 用 SendUserFile 傳成品（≤ 30 MiB），回覆附：長度與規格、能不能直接發、段落內容、自己補的假設、最後一輪評分（縮圖與剪點各自的平均／最低）、`flow_final/report.md` 的平均鏡頭長、實拍不到半個畫面的時間、剪輯速度 vs 音樂能量、`finish_final/report.md` 的黑位標準差與偏色分散、用了哪個 mood、要使用者確認的地方
 
 ## 7. 收尾
 - 這次學到、可以重複用的做法：零件寫回 `VL/scripts/seekkit.py`，規則寫回 `CLAUDE.md` 或 `VL/references/`；使用者的回饋寫進 `VL/references/masters.md`〈零〉
