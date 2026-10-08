@@ -596,9 +596,17 @@ def lightning(c, t, p0, p1, k=1.0, seed=0, fps=30, col=(1.0, 0.86, 0.35), religh
 
 
 # ───────────────────────── 6. 收服用的球（立體打光）、轉場、能量 ─────────────────────────
-@functools.lru_cache(maxsize=64)
 def ball_sprite(d, glow=0.0):
-    """立體的紅白球：漫射＋高光＋菲涅耳邊緣光＋環境反射；中間黑帶有倒角、中央按鈕有凹凸。3 倍超取樣。glow＝按鈕發光 0–1。"""
+    """立體的紅白球：漫射＋高光＋菲涅耳邊緣光＋環境反射；中間黑帶有倒角、中央按鈕有凹凸。glow＝按鈕發光 0–1。
+    480 px 以上先畫 480 再平滑放大（轉場時球會放大到 2600 px：每個尺寸都快取、3 倍超取樣，實測吃掉 14 GB 被系統砍掉）。"""
+    d = int(d)
+    if d <= 480:
+        return _ball_sprite(d, glow)
+    return cv2.resize(_ball_sprite(480, glow), (d, d), interpolation=cv2.INTER_CUBIC).clip(0, 1)
+
+
+@functools.lru_cache(maxsize=48)
+def _ball_sprite(d, glow=0.0):
     S = 3
     D = d * S
     yy, xx = np.mgrid[0:D, 0:D].astype(np.float32)
@@ -744,9 +752,9 @@ def ball_transition(c, t, tc, fps=30, approach=0.30, after=0.28, cx=None, cy=Non
             tt = t + (s - 0.5) / fps * 0.5
             u = np.clip((tt - (tc - approach)) / approach, 0, 1)
             d = 120 + (2600 - 120) * u ** 2.6
-            return (cx + (1 - u) * 90, cy - (1 - u) * 260, d, -540 * (1 - u) + 25)
+            return (cx + (1 - u) * 90, cy - (1 - u) * 260, d, (-540 * (1 - u) + 25) if d < 900 else 25)   # 大球不轉（旋轉 2600 px 的圖很慢、看不出來）
         u = (t - (tc - approach)) / approach
-        ball_mblur(c, path, 12, glow=min(1.0, max(0.0, (u - 0.55) / 0.45)))
+        ball_mblur(c, path, 6, glow=min(1.0, max(0.0, (u - 0.55) / 0.45)))
         if u > 0.75:
             luminous(c, (u - 0.75) / 0.25 * 0.85)
     elif tc <= t < tc + after:
