@@ -211,7 +211,7 @@ def samples(path, every):
         b = p.stdout.read(n)
         if len(b) < n:
             break
-        yield (i + 0.5) * every, np.frombuffer(b, np.uint8).reshape(h, w, 3)
+        yield i * every, np.frombuffer(b, np.uint8).reshape(h, w, 3)  # fps 濾鏡取的是 i×every 附近那一格
         i += 1
     p.wait()
 
@@ -251,7 +251,9 @@ def shot_summary(ms):
         return float(np.median(v)) if v else None
     casts = [m['cast'] for m in ms if m['cast']]
     skins = [m['skin'] for m in ms if m['skin']]
-    bands = [m['band'] for m in ms if m['band'] is not None]
+    bands = sorted(m['band'] for m in ms if m['band'] is not None)
+    if len(bands) >= 3:  # 鏡頭頭尾的抽樣常落在轉場格上：取第二高，不讓單一過場格決定整個鏡頭
+        bands = bands[:-1]
     return dict(black=med('black'), mid=med('mid'), white=med('white'), clip=max(m['clip'] for m in ms),
                 shoulder=float(np.median([m['shoulder'] for m in ms])), crush=med('crush'), sat=med('sat'),
                 gamut=max(m['gamut'] for m in ms), cover=med('cover'),
