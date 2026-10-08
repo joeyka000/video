@@ -581,7 +581,9 @@ def check_engine(a):
         return cv2.resize(np.ascontiguousarray(im[..., :3]), (pw, ph), interpolation=cv2.INTER_AREA)
 
     shots = sorted([(float(s[0]), float(s[1])) for s in m.SHOTS])
-    cuts = sorted({round(s0 * fps) for s0, _ in shots if s0 > 1e-6})
+    # 剪點落在拍子上（2.14 秒）不一定剛好是整格：frames.py 第 i 格在 t = i/fps，B 的第一格是 t ≥ s0 的那一格（無條件進位），
+    # 用四捨五入會把 A 的最後一格當成 B 的第一格，整刀被誤判成「畫面連續」
+    cuts = sorted({math.ceil(s0 * fps - 1e-6) for s0, _ in shots if s0 > 1e-6})
     print(f'{a.engine}：{len(shots)} 個鏡頭、{len(cuts)} 個剪點，每刀渲 14 格…', file=sys.stderr)
     S, C, pairs = [], [], {}
     win = {}
