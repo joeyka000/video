@@ -14,6 +14,7 @@
     - [mexicat/pdoom-video](https://github.com/mexicat/pdoom-video)（MIT；`audio/`、`lyrics/`、`data/lyrics.json` 屬原作者）
     - [yihui-dev/awesome-opus5-5-videos](https://github.com/yihui-dev/awesome-opus5-5-videos)（每支 prompt 屬原作者）
     - [2606156052/Pdoom-video-anime-version](https://github.com/2606156052/Pdoom-video-anime-version)（程式碼 ISC；歌曲與影片素材屬原作者）
+    - [ZJU-REAL/Easel](https://github.com/ZJU-REAL/Easel)（Apache-2.0；只稀疏取 `skills/`、`docs/`，網頁後台與代理閘道不裝）
 - `.claude/skills/video-lab/references/`
   - `mv-direction.md`：MV／藝術影片的創作思考：從 brief 到交付的九步、三種型態、概念方法、分鏡表規格、思考自檢
   - `editing.md`：音樂驅動的剪輯文法、14 招與實測 ffmpeg 配方、剪點表工作流程、剪輯自檢
@@ -23,6 +24,7 @@
   - `anime.md`：日系動漫剪輯元素與風格清單
   - `masters.md`：導演與動畫 OP 演出家的手法、使用者回饋教訓
   - `review.md`：評分錨點、評分紀律、禁用清單
+  - `easel.md`：Easel 技能庫索引（可用腳本、花錢與發文禁區）
 - `.claude/skills/video-lab/templates/`
   - `treatment.md`：treatment（風格聖經）填空範本
   - `cuts.csv`：剪點表範本（`bar,beat,src,in,speed,label`）

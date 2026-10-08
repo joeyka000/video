@@ -13,6 +13,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
   - `analysis/align.py`：Whisper＋CTC 逐字時間碼對齊
   - `analysis/analyze.py`：節拍／小節／段落分析
 - `~/video-lab/refs/anime-op`：動畫 OP 範例；`STORYBOARD.md` 是依 BPM 排的分鏡表典範（程式碼 ISC；歌曲與影片素材不可用）
+- `~/video-lab/refs/easel`：Easel 內容技能庫（114 個技能＋可直接跑的工具腳本：免費臺灣口音配音、長片切短影音、人臉置中橫轉直、綠幕、去背、降噪）；用之前先讀 `references/easel.md`（哪些能用、哪些會花錢、繁中規則）
 - `~/video-lab/refs/awesome-opus5-5-videos`：程式動畫 prompt 庫
   - `data/videos.json`：全索引（475 支，含技術標籤 Canvas／SVG·GSAP／Three.js／GLSL）
   - `prompts/*.md`：單支 prompt。找風格先用 videos.json 依標籤篩，再讀對應 prompt；MV 與藝術向的先查 `references/awesome-mv-index.md`
@@ -43,6 +44,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/frames.py`：引擎執行器（`still` 抽格、`sheet` 縮圖總覽＋評分表、`video` 切段平行渲染＋混音、`deliver` HEVC 兩段式壓到上傳上限內）
 - `scripts/review.py`：縮圖總覽評分關卡（`sheet` 從影片或圖檔出總覽、`gate` 全部 ≥ 8 才過、`diff` 兩輪對照）
 - `scripts/brand.py`：網址 → 品牌素材包（桌機／手機真截圖、區塊截圖、logo 原檔、依面積算的品牌色、字型、真實文案）
+- `references/easel.md`：Easel 技能庫索引：值得用的腳本與用法、花錢與發文的禁區、簡轉繁規則
 - `references/review.md`：1–10 分錨點、評分紀律、禁用清單（老套）與替代做法、常見扣分原因
 - `templates/engine.py`：seek(t) 影片引擎範本（真截圖開場、跟著捲動的 callout、自動換行的片尾）
 - `templates/music.py`：原創合成配樂範本（段落表對齊畫面：intro／arp／light／groove／build／main／break／end）

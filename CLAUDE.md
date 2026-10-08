@@ -5,6 +5,7 @@
 ## 環境
 - Node 22、ffmpeg 6.1、Playwright（Python 在 `~/video-lab/.venv`，npm 全域也有）、Chromium 預裝在 `/opt/pw-browsers`（不要 `playwright install`）
 - 雲端 session 開啟時 `.claude/hooks/session-start.sh` 自動裝環境；4 核心、磁碟配額小：中間檔用完就刪，舊專案素材要刪先問
+- 參考庫在 `~/video-lab/refs/`：pdoom-video、awesome、anime-op、easel（Easel 的工具腳本可直接跑；配音一律 `--engine edge`，付費 provider 不設定，見 `references/easel.md`）
 - 傳檔給使用者上限 30 MiB：成品用 `frames.py deliver` 壓 HEVC 兩段式；母帶留在專案裡
 
 ## 第一條：影片是時間的函式

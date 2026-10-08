@@ -50,11 +50,11 @@ fi
 if command -v uv >/dev/null; then
   [ -x "$LAB/.venv/bin/python" ] || uv venv -q --python 3.11 "$LAB/.venv" >>"$LOG" 2>&1
   VIRTUAL_ENV="$LAB/.venv" uv pip install -q \
-    faster-whisper opencc auto-editor librosa soundfile scipy pillow opencv-python-headless playwright==1.56.0 >>"$LOG" 2>&1
+    faster-whisper opencc auto-editor librosa soundfile scipy pillow opencv-python-headless edge-tts playwright==1.56.0 >>"$LOG" 2>&1
 else
   [ -x "$LAB/.venv/bin/python" ] || python3 -m venv "$LAB/.venv"
   "$LAB/.venv/bin/pip" install -q \
-    faster-whisper opencc auto-editor librosa soundfile scipy pillow opencv-python-headless playwright==1.56.0 >>"$LOG" 2>&1
+    faster-whisper opencc auto-editor librosa soundfile scipy pillow opencv-python-headless edge-tts playwright==1.56.0 >>"$LOG" 2>&1
 fi
 # auto-editor 第一次執行會下載自己的執行檔，先跑一次
 "$LAB/.venv/bin/auto-editor" --version >>"$LOG" 2>&1 || warnings+=("auto-editor 執行檔下載失敗")
@@ -76,6 +76,14 @@ sync_ref() {
 sync_ref https://github.com/mexicat/pdoom-video pdoom-video
 sync_ref https://github.com/yihui-dev/awesome-opus5-5-videos awesome-opus5-5-videos
 sync_ref https://github.com/2606156052/Pdoom-video-anime-version anime-op
+# Easel（Apache-2.0）整個 repo 760 MB，只稀疏取 skills/ 與 docs/（約 25 MB）
+if [ -d "$LAB/refs/easel/.git" ]; then
+  GIT_LFS_SKIP_SMUDGE=1 git -C "$LAB/refs/easel" pull -q --ff-only >>"$LOG" 2>&1 || warnings+=("easel 更新失敗，沿用舊版")
+else
+  rm -rf "$LAB/refs/easel"
+  { GIT_LFS_SKIP_SMUDGE=1 git clone -q --depth 1 --filter=blob:none --sparse https://github.com/ZJU-REAL/easel "$LAB/refs/easel" \
+    && git -C "$LAB/refs/easel" sparse-checkout set skills docs; } >>"$LOG" 2>&1 || warnings+=("easel clone 失敗")
+fi
 
 if [ ${#warnings[@]} -eq 0 ]; then
   echo "video-lab 環境就緒（紀錄：$LOG）"
