@@ -3,6 +3,7 @@
 做動漫風片頭、MV、MAD、紀錄片的日系段落時讀這份。
 - 程式動畫效果：`assets/anime-fx.js`（`AFX.*`，全部是 t 的純函式）
 - 示範頁：`assets/anime-demo.html`，用 `scripts/render.py` 輸出
+- **Python seek(t) 引擎（實拍＋特效）**：`scripts/animefx.py`——`cel`（實拍轉賽璐璐）、`speed_lines`、`streaks`、`impact`、`flash_at`、`shake`、`sunburst`、`sparkles`、`god_rays`、`para`、`lightning`、`particles`（ember／bubble／leaf／dust／cloud／confetti／heart／spark）、`outline_sprite`／`karaoke`（動畫 OP 字幕）、`tag_sprite`（膠囊標籤）、`slam`、`cut_in`、`dialog_box`（遊戲對話框）、`ball`／`ball_wipe`／`capture_burst`／`wobble`（收服用的球、球形轉場）、`evolution`（白色剪影交替閃）、`gloom`／`sweat_sprite`（漫畫搞笑）。`python scripts/animefx.py demo 一張圖.jpg -o qa/demo.jpg` 出每個效果一格的對照表。用法範例：寶可夢峇里島動漫版（`projects/pokemon/work/engine_anime.py`，不進 git）
 - 實拍素材：用下面的 ffmpeg 做法（都實測過）
 - 本文保留日文術語原文（画面動、セル画調、作画MAD、10か条），其中的日文漢字 `画`／`条` 會被 OpenCC s2twp 檢查誤報成簡體；檢查本文時排除含這些詞的列：`/root/video-lab/.venv/bin/python -c "import opencc,re,sys; c=opencc.OpenCC('s2twp'); s='\n'.join(l for l in open(sys.argv[1]).read().split('\n') if not re.search('画面動|セル画|作画|か条', l)); print('OK' if c.convert(s)==s else 'HAS_SIMPLIFIED')" references/anime.md`
 
@@ -98,6 +99,15 @@ ffmpeg -i in.mp4 -c:v libvpx-vp9 -i out/fx.webm -filter_complex "[0][1]overlay" 
   - `STORYBOARD.md`：動畫 OP 的逐鏡分鏡範例（依 BPM 排）
   - `song.mp3`、`studio/frames/`、`studio/img/` 屬原作者或 AI 生成素材，不可使用
 - awesome 庫相關 prompt：`pound75423-464968`（迷幻 MAD MV）、`op7418-814408`／`op7418-818226`（手遊演出）、`allforbigfire-029657`（機器人變形合體動畫風 3D）、`ishuagra02-922825`（動畫風對戰預告）、`anduraio-570761`（柔和卡通著色）
+
+## 四之一、實拍動漫版的做法（`animefx.py`，寶可夢峇里島動漫版實測）
+
+- **整支片先轉賽璐璐**（`cel`），不是只在幾個鏡頭加濾鏡；畫風統一了，特效疊上去才像同一個世界。`cel` v1（平滑 4 次、墨線 0.7）在商品特寫上像水彩、包裝圖被抹掉；v2（平滑 2 次、墨線 0.95、原片高頻加回 0.35）包裝字與圖案認得出來。1080×1920 一格 0.6–0.8 秒
+- **特效跟著歌詞與段落走**，每個都要說得出為什麼在這一拍：「火の中 水の中…」每個詞一個屬性徽章（砸進來後排成一列）＋該屬性的粒子；戰利品＝收服（球落下、搖三下踩拍、喀、星星、對話框「收服成功」）；戰利品變多＝進化（白色剪影交替閃，白光落在重拍）；段落之間用球形轉場（10 格）
+- **強度隨段落**（前奏 40%／主歌 70%／副歌 100%）；衝擊格只放倒帶第一下（2 格），白閃只在重拍
+- **實拍要看得到**（峇里島 v1 被退的教訓）：衝擊格用那一格實拍本身反轉；集中線尖端停在主體外圈；放射光中心挖空；對話框、色帶只佔一條
+- **自製的元素不碰官方素材**：球、徽章、對話框、星星全部程式畫；不用官方 logo、角色圖、遊戲截圖與遊戲音效。音效也是合成的（`engine_anime.py` 的 `sfx`：whoosh、click、pop、chime、hit、zap、rattle、evo），歌曲音量 0.86＋音效 0.7 再軟限幅
+- 字幕：動畫 OP 式卡拉 OK（白字深藍描邊、唱到的變黃）＋日文原句小字在上；這種片的字幕本來就是描邊字，跟 v2 那種實拍質感片的字幕規格（`finish.md`〈六〉）是兩回事
 
 ## 五、授權與分寸
 
