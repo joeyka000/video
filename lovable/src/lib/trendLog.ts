@@ -1,0 +1,209 @@
+// 「Threads 熱門話題日報」解析、匯入、輸出（瀏覽器端）。
+// A1：`2026/10/08 ─ 09:00 掃描（A1 熱搜）` → Google Trends 台灣熱搜 TOP 20（`1. 關鍵字（2萬+）─ 分類`）
+// A2：`[2026/10/06] [15:00] A2 Threads 掃描` → ▌趨勢話題（`話題1｜標題｜2萬則`、摘要、貼文：作者／內容／互動／連結／留言）、
+//     ▌For You 動態牆精選、▌數據摘要、▌方法備註
+// 標題寫法不固定（全形／半形括號、[日期 …] [時間 …]、缺日期或時間），用關鍵字判斷。
+
+export interface Engage { likes: number | null; replies: number | null; reposts: number | null; shares: number | null }
+export interface Comment { author: string; text: string; likes: number | null }
+export interface Post extends Engage { author: string; content: string; url: string; comments: Comment[] }
+export interface Topic { no: number; title: string; volume: string; volume_n: number | null; summary: string; posts: Post[] }
+export interface Term { rank: number; term: string; traffic: string; traffic_n: number | null; category: string }
+export interface Scan {
+  kind: "A1" | "A2"; scan_date: string; scan_time: string;
+  terms: Term[]; topics: Topic[]; for_you: Post[]; summary: Record<string, string>; notes: string[];
+}
+
+const RE_DATE = /(\d{4})\/(\d{1,2})\/(\d{1,2})/;
+const RE_TIME = /(\d{1,2}:\d{2})/;
+const RE_TERM = /^(\d{1,2})[.、]\s*(.+?)[（(]([^（）()]*)[）)]\s*[─—-]+\s*(.+)$/;
+const RE_TOPIC = /^話題\s*(\d+)\s*[｜|]\s*(.+?)\s*[｜|]\s*(.+?)\s*$/;
+const RE_POST = /^\[(\d+)\]\s*@(\S+)/;
+const RE_COMMENT = /^[-－・]\s*(?:(.+?)：)?(.+?)(?:（讚\s*([^）]*)）)?$/;
+const UNITS: Record<string, number> = { 萬: 10000, 千: 1000, 億: 100000000 };
+
+/** 「2.3萬」「1,385」「9萬+」→ 整數；讀不出來回 null */
+export function toNum(s?: string | null): number | null {
+  if (!s) return null;
+  const m = s.replace(/[,+則\s]/g, "").match(/^([\d.]+)([萬千億]?)/);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  return Number.isFinite(v) ? Math.round(v * (UNITS[m[2]] ?? 1)) : null;
+}
+
+/** 去掉 Google 文件匯出 Markdown 的粗體與跳脫字元 */
+export function clean(text: string): string {
+  return text.replace(/\*\*/g, "").replace(/\\([\[\]_.*~\-#()!+`>|])/g, "$1");
+}
+
+function headerKind(ln: string): "A1" | "A2" | null {
+  if (!ln.includes("掃描") || ln.includes("結束") || ln.length > 60) return null;
+  if (ln.includes("A2") && ln.includes("Threads")) return "A2";
+  if (ln.includes("A1") && RE_DATE.test(ln)) return "A1";
+  return null;
+}
+
+function engage(s: string): Engage {
+  const get = (k: string) => toNum(s.match(new RegExp(k + "\\s*([\\d.,]+\\s*[萬千億]?)"))?.[1]);
+  return { likes: get("讚"), replies: get("回覆"), reposts: get("轉發"), shares: get("分享") };
+}
+
+export function parse(text: string): Scan[] {
+  const scans: Scan[] = [];
+  let cur: Scan | null = null;
+  let section: string | null = null;
+  let topic: Topic | null = null;
+  let post: Post | null = null;
+  for (const raw of clean(text).split("\n")) {
+    const ln = raw.trim();
+    if (!ln || /^[─—\-\s]+$/.test(ln)) continue;
+    const kind = headerKind(ln);
+    if (kind) {
+      const md = ln.match(RE_DATE);
+      const mt = ln.match(RE_TIME);
+      const date = md
+        ? `${md[1]}-${md[2].padStart(2, "0")}-${md[3].padStart(2, "0")}`
+        : scans.at(-1)?.scan_date ?? "";
+      cur = { kind, scan_date: date, scan_time: mt ? mt[1].padStart(5, "0") : "", terms: [], topics: [], for_you: [], summary: {}, notes: [] };
+      if (!md) cur.notes.push("（標題沒有日期，沿用上一場的日期）");
+      if (!mt) cur.notes.push("（標題沒有時間）");
+      scans.push(cur);
+      section = kind === "A1" ? "a1" : null;
+      topic = post = null;
+      continue;
+    }
+    if (!cur) continue;
+    if (ln.includes("掃描結束")) { cur = null; section = null; topic = post = null; continue; }
+    if (cur.kind === "A1") {
+      const m = ln.match(RE_TERM);
+      if (m) cur.terms.push({ rank: +m[1], term: m[2].trim(), traffic: m[3].trim(), traffic_n: toNum(m[3]), category: m[4].trim() });
+      continue;
+    }
+    if (ln.startsWith("▌")) {
+      const name = ln.slice(1);
+      section = name.includes("趨勢話題") ? "topics" : name.includes("For") ? "for_you"
+        : name.includes("數據摘要") ? "summary" : name.includes("備註") ? "notes" : "other";
+      topic = post = null;
+      continue;
+    }
+    const mt = ln.match(RE_TOPIC);
+    if (mt) {
+      topic = { no: +mt[1], title: mt[2].trim(), volume: mt[3].trim(), volume_n: toNum(mt[3]), summary: "", posts: [] };
+      cur.topics.push(topic);
+      section = "topics";
+      post = null;
+      continue;
+    }
+    if (ln.startsWith("摘要：") && topic) { topic.summary = ln.slice(3).trim(); continue; }
+    const mp = ln.match(RE_POST);
+    if (mp) {
+      post = { author: mp[2].replace(/｜$/, ""), content: "", url: "", comments: [], likes: null, replies: null, reposts: null, shares: null };
+      if (section === "for_you") cur.for_you.push(post);
+      else if (topic) topic.posts.push(post);
+      continue;
+    }
+    if (post) {
+      if (ln.startsWith("內容：")) { post.content = ln.slice(3).trim(); continue; }
+      if (ln.startsWith("互動：")) { Object.assign(post, engage(ln)); continue; }
+      if (ln.startsWith("連結：")) { post.url = ln.slice(3).trim(); continue; }
+      if (ln.startsWith("留言：")) continue;
+      const mc = ln.match(RE_COMMENT);
+      if (mc && "-－・".includes(ln[0])) {
+        post.comments.push({ author: (mc[1] ?? "").trim(), text: mc[2].trim(), likes: toNum(mc[3]) });
+        continue;
+      }
+    }
+    if (section === "summary" && ln.includes("：")) {
+      const [k, ...v] = ln.split("：");
+      cur.summary[k.trim()] = v.join("：").trim();
+    } else if (section === "notes" || ln.startsWith("備註")) {
+      cur.notes.push(ln);
+    }
+  }
+  return scans;
+}
+
+export function stats(scans: Scan[]) {
+  const a1 = scans.filter((s) => s.kind === "A1");
+  const a2 = scans.filter((s) => s.kind === "A2");
+  return {
+    a1: a1.length, a2: a2.length,
+    terms: a1.reduce((n, s) => n + s.terms.length, 0),
+    topics: a2.reduce((n, s) => n + s.topics.length, 0),
+    posts: a2.reduce((n, s) => n + s.for_you.length + s.topics.reduce((m, t) => m + t.posts.length, 0), 0),
+    from: scans.map((s) => s.scan_date).filter(Boolean).sort()[0] ?? "",
+    to: scans.map((s) => s.scan_date).filter(Boolean).sort().at(-1) ?? "",
+  };
+}
+
+const fmt = (v: number | null) => (v == null ? "—" : v.toLocaleString("zh-TW"));
+
+/** 輸出成日報原格式（可貼回 Google 文件） */
+export function render(s: Scan): string {
+  const d = s.scan_date.replaceAll("-", "/");
+  if (s.kind === "A1") {
+    return ["─".repeat(29), `${d} ─ ${s.scan_time} 掃描（A1 熱搜）`, "─".repeat(29), "", "Google Trends 台灣熱搜 TOP 20", "",
+      ...s.terms.map((t) => `${t.rank}. ${t.term}（${t.traffic}）─ ${t.category || "待分類"}`), "", "── A1 掃描結束 ──"].join("\n");
+  }
+  const postLines = (p: Post, i: number) => [
+    `  [${i + 1}] @${p.author}`, `      內容：${p.content}`,
+    `      互動：讚${fmt(p.likes)}｜回覆${fmt(p.replies)}｜轉發${fmt(p.reposts)}｜分享${fmt(p.shares)}`,
+    `      連結：${p.url}`,
+    ...(p.comments.length ? ["      留言：", ...p.comments.map((c) => `        - ${c.author ? c.author + "：" : ""}${c.text}${c.likes ? `（讚${fmt(c.likes)}）` : ""}`)] : []),
+  ];
+  const out = [`[${d}] [${s.scan_time}] A2 Threads 掃描`, "", "▌趨勢話題", ""];
+  for (const t of s.topics) out.push(`話題${t.no}｜${t.title}｜${t.volume}`, `摘要：${t.summary}`, ...t.posts.flatMap(postLines), "");
+  if (s.for_you.length) out.push("▌For You 動態牆精選", ...s.for_you.flatMap(postLines));
+  if (Object.keys(s.summary).length) out.push("▌數據摘要", ...Object.entries(s.summary).map(([k, v]) => `${k}：${v}`));
+  out.push(...s.notes, "── A2 掃描結束 ──");
+  return out.join("\n");
+}
+
+// ── 寫進資料庫（Supabase）。同一場掃描（kind＋日期＋時間）重匯會覆蓋。──
+// deno-lint-ignore no-explicit-any
+type Db = any;
+
+async function insertChunks(db: Db, table: string, rows: unknown[], size = 500) {
+  for (let i = 0; i < rows.length; i += size) {
+    const { error } = await db.from(table).insert(rows.slice(i, i + size));
+    if (error) throw new Error(`${table}：${error.message}`);
+  }
+}
+
+export async function importScans(db: Db, scans: Scan[], onProgress?: (msg: string) => void) {
+  // 同一份文件裡同一場掃描出現兩次時，以後面的為準
+  const uniq = new Map<string, Scan>();
+  for (const s of scans) if (s.scan_date) uniq.set(`${s.kind}|${s.scan_date}|${s.scan_time}`, s);
+  const list = [...uniq.values()];
+  onProgress?.(`清掉要覆蓋的舊掃描…`);
+  for (const s of list) {
+    const { error } = await db.from("trend_scans").delete()
+      .eq("kind", s.kind).eq("scan_date", s.scan_date).eq("scan_time", s.scan_time);
+    if (error) throw new Error(`trend_scans：${error.message}`);
+  }
+  const scanRows: unknown[] = [], termRows: unknown[] = [], topicRows: unknown[] = [], postRows: unknown[] = [];
+  for (const s of list) {
+    const scan_id = crypto.randomUUID();
+    scanRows.push({ id: scan_id, kind: s.kind, scan_date: s.scan_date, scan_time: s.scan_time, summary: s.summary, notes: s.notes, source: "import" });
+    s.terms.forEach((t) => termRows.push({ scan_id, ...t }));
+    const postRow = (p: Post, ord: number, topic_id: string | null) => ({
+      scan_id, topic_id, ord, author: p.author, content: p.content, likes: p.likes, replies: p.replies,
+      reposts: p.reposts, shares: p.shares, url: p.url, comments: p.comments,
+    });
+    for (const t of s.topics) {
+      const topic_id = crypto.randomUUID();
+      topicRows.push({ id: topic_id, scan_id, no: t.no, title: t.title, volume: t.volume, volume_n: t.volume_n, summary: t.summary });
+      t.posts.forEach((p, i) => postRows.push(postRow(p, i, topic_id)));
+    }
+    s.for_you.forEach((p, i) => postRows.push(postRow(p, i, null)));
+  }
+  onProgress?.(`寫入 ${scanRows.length} 場掃描…`);
+  await insertChunks(db, "trend_scans", scanRows);
+  onProgress?.(`寫入 ${termRows.length} 個熱搜詞…`);
+  await insertChunks(db, "trend_terms", termRows);
+  onProgress?.(`寫入 ${topicRows.length} 個話題…`);
+  await insertChunks(db, "threads_topics", topicRows);
+  onProgress?.(`寫入 ${postRows.length} 則貼文…`);
+  await insertChunks(db, "threads_posts", postRows);
+  return { scans: scanRows.length, terms: termRows.length, topics: topicRows.length, posts: postRows.length };
+}

@@ -1,0 +1,179 @@
+<title>Lovable 開工指令</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* 版面：單欄工作清單——左側步驟號＋右側內容；把「複製」做成每一列最明顯的動作 */
+:root {
+  --bg: #F5F6F4; --card: #FFFFFF; --ink: #15171A; --muted: #5D636B; --line: #E2E5E3;
+  --accent: #0E7C66; --accent-ink: #FFFFFF; --accent-soft: #E3F2EE;
+  --warn: #9A5B0B; --warn-soft: #FBF1DF; --done: #2F8F4E;
+  --code-bg: #F0F2F0;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1113; --card: #171A1D; --ink: #E8EBE9; --muted: #9AA19D; --line: #2A2F2C;
+    --accent: #3CC4A4; --accent-ink: #08221C; --accent-soft: #16322B;
+    --warn: #E8B45A; --warn-soft: #2E2615; --done: #5BC27A; --code-bg: #121517; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1113; --card: #171A1D; --ink: #E8EBE9; --muted: #9AA19D; --line: #2A2F2C;
+  --accent: #3CC4A4; --accent-ink: #08221C; --accent-soft: #16322B;
+  --warn: #E8B45A; --warn-soft: #2E2615; --done: #5BC27A; --code-bg: #121517; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.7; }
+.wrap { max-width: 820px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 64px; display: grid; gap: 28px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .08em; color: var(--accent); text-transform: uppercase; }
+h1 { font-size: clamp(26px, 5vw, 34px); font-weight: 900; line-height: 1.25; margin: 0; text-wrap: balance; }
+.lead { color: var(--muted); margin: 0; max-width: 62ch; }
+.prep { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: grid; gap: 14px; }
+.prep h2, .notes h2 { font-size: 16px; margin: 0; font-weight: 700; }
+.prep ul, .notes ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.email-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.email-row label { font-weight: 500; }
+.email-row input { flex: 1 1 240px; min-width: 0; font: inherit; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.email-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hint { color: var(--muted); font-size: 13px; }
+.progress { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+.bar { flex: 1; height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.step { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 4px 14px; }
+.step.is-done { border-color: color-mix(in srgb, var(--done) 45%, var(--line)); }
+.no { font-family: var(--f-mono); font-weight: 700; font-size: 22px; color: var(--accent); line-height: 1.3; }
+.step.is-done .no { color: var(--done); }
+.body { min-width: 0; display: grid; gap: 8px; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.head h3 { margin: 0; font-size: 17px; font-weight: 700; }
+.tag { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.size { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.what { margin: 0; color: var(--ink); }
+.callout { font-size: 14px; border-radius: 8px; padding: 8px 12px; background: var(--accent-soft); }
+.callout.warn { background: var(--warn-soft); color: var(--ink); border-left: 3px solid var(--warn); }
+.callout b { font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+button.copy { font: inherit; font-weight: 700; padding: 7px 16px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button.copy:focus-visible, summary:focus-visible, .done-box input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+button.copy.ok { background: var(--done); }
+.done-box { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+.done-box input { width: 16px; height: 16px; accent-color: var(--accent); }
+details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+details pre { margin: 8px 0 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; max-height: 420px; font-family: var(--f-mono); font-size: 12px; line-height: 1.55; white-space: pre; }
+.toast { font-size: 13px; color: var(--done); }
+.notes { display: grid; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.notes p { margin: 0; color: var(--muted); }
+code { font-family: var(--f-mono); font-size: 13px; background: var(--code-bg); padding: 0 4px; border-radius: 4px; }
+@media (max-width: 480px) { .step { grid-template-columns: 1fr; } .no { font-size: 18px; } }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">內容工作台・台灣版</div>
+    <h1>Lovable 開工指令</h1>
+    <p class="lead">照順序一步一步貼進 Lovable 的對話框。每一步完成、畫面正常後再貼下一步；程式碼已經寫好、測過，指令裡要 Lovable 照原樣建立，不要它自己重寫。</p>
+  </header>
+
+  <section class="prep" aria-labelledby="prep-h">
+    <h2 id="prep-h">開工前準備</h2>
+    <ul>
+      <li>Lovable 帳號（Lovable Cloud 的資料庫、登入與雲端函式依你的方案額度計費）</li>
+      <li>Anthropic API 金鑰：在 console.anthropic.com 建立，順便設定每月花費上限。金鑰只貼在 Lovable Cloud → Secrets，不要貼進任何對話</li>
+      <li>你的 Threads 熱門話題日報：Google 文件「檔案 → 下載 → 純文字（.txt）」</li>
+    </ul>
+    <div class="email-row">
+      <label for="email">你的 Email</label>
+      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+    </div>
+    <div class="hint">第 01 步會用它建立第一位管理員；只存在這個頁面，複製時換進 SQL。</div>
+    <div class="progress" aria-live="polite"><span id="prog-text">已完成 0 / 9</span><div class="bar"><i id="prog-bar"></i></div></div>
+  </section>
+
+  <ol class="steps" id="steps"></ol>
+
+  <section class="notes" aria-labelledby="notes-h">
+    <h2 id="notes-h">費用與範圍</h2>
+    <ul>
+      <li>AI 改寫預設用 Claude Opus 5.5：改寫成 8 個平台一次約 US$0.05–0.10，熱搜補分類一次約 US$0.01；在 Secrets 把 <code>CLAUDE_MODEL</code> 設成 <code>claude-sonnet-5-5</code> 約省一半。每月上限預設 US$20（<code>AI_MONTHLY_BUDGET_USD</code>），超過自動停用。</li>
+      <li>被 Claude 安全機制誤擋的請求會自動改用 Anthropic 建議的備援模型重跑（已在程式裡開啟）。</li>
+      <li>這個網頁版沒有：AI 代理技能、影片剪輯、字幕、配音、自動發文。Threads 的即時掃描（A2）仍用你原本的 Claude in Chrome 流程，結果匯入即可。</li>
+      <li>原始檔在 GitHub：joeyka000/video 的 <code>lovable/</code> 資料夾（<code>dist/</code> 是每一步的完整指令）。</li>
+    </ul>
+  </section>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(function () {
+  var steps = JSON.parse(document.getElementById('data').textContent);
+  var KEY = 'lovable-steps-done';
+  var done = {};
+  try { done = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { done = {}; }
+  var emailInput = document.getElementById('email');
+  try { emailInput.value = localStorage.getItem('lovable-email') || ''; } catch (e) {}
+  emailInput.addEventListener('input', function () { try { localStorage.setItem('lovable-email', emailInput.value.trim()); } catch (e) {} });
+
+  function textFor(s) {
+    if (!s.email) return s.text;
+    var v = emailInput.value.trim();
+    return v ? s.text.split('YOUR_EMAIL@example.com').join(v) : s.text;
+  }
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function saveDone() { try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {} }
+  function updateProgress() {
+    var n = steps.filter(function (s) { return done[s.id]; }).length;
+    document.getElementById('prog-text').textContent = '已完成 ' + n + ' / ' + steps.length;
+    document.getElementById('prog-bar').style.width = (n / steps.length * 100) + '%';
+  }
+
+  var list = document.getElementById('steps');
+  steps.forEach(function (s) {
+    var li = el('li', 'step' + (done[s.id] ? ' is-done' : ''));
+    li.appendChild(el('div', 'no', s.no));
+    var body = el('div', 'body');
+    var head = el('div', 'head');
+    head.appendChild(el('h3', null, s.title));
+    if (s.optional) head.appendChild(el('span', 'tag', '選用'));
+    head.appendChild(el('span', 'size', s.chars.toLocaleString('zh-TW') + ' 字元'));
+    body.appendChild(head);
+    body.appendChild(el('p', 'what', s.what));
+    (s.before || []).forEach(function (t) {
+      var c = el('div', 'callout' + (s.warn ? ' warn' : ''));
+      var b = el('b', null, '貼上前：'); c.appendChild(b); c.appendChild(document.createTextNode(t));
+      body.appendChild(c);
+    });
+    (s.after || []).forEach(function (t) {
+      var c = el('div', 'callout'); var b = el('b', null, '完成後：'); c.appendChild(b); c.appendChild(document.createTextNode(t));
+      body.appendChild(c);
+    });
+    var actions = el('div', 'actions');
+    var btn = el('button', 'copy', '複製第 ' + s.no + ' 步指令'); btn.type = 'button';
+    var toast = el('span', 'toast'); toast.setAttribute('aria-live', 'polite');
+    var det = el('details'); var sum = el('summary', null, '看全文'); var pre = el('pre');
+    det.appendChild(sum); det.appendChild(pre);
+    det.addEventListener('toggle', function () { if (det.open) pre.textContent = textFor(s); });
+    btn.addEventListener('click', function () {
+      if (s.email && !emailInput.value.trim()) {
+        toast.style.color = 'var(--warn)'; toast.textContent = '先在上方填 Email，再複製這一步';
+        emailInput.focus(); return;
+      }
+      var t = textFor(s);
+      function ok() { btn.classList.add('ok'); btn.textContent = '已複製'; toast.style.color = ''; toast.textContent = '貼到 Lovable 對話框送出'; setTimeout(function () { btn.classList.remove('ok'); btn.textContent = '複製第 ' + s.no + ' 步指令'; }, 2200); }
+      function fallback() { det.open = true; pre.textContent = t; var r = document.createRange(); r.selectNodeContents(pre); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); toast.style.color = 'var(--warn)'; toast.textContent = '這個檢視器不讓網頁寫入剪貼簿：全文已選取，請按複製'; }
+      try { navigator.clipboard.writeText(t).then(ok, fallback); } catch (e) { fallback(); }
+    });
+    var lab = el('label', 'done-box'); var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'done-' + s.no; cb.checked = !!done[s.id];
+    cb.addEventListener('change', function () { done[s.id] = cb.checked; li.classList.toggle('is-done', cb.checked); saveDone(); updateProgress(); });
+    lab.appendChild(cb); lab.appendChild(document.createTextNode('這步完成了'));
+    actions.appendChild(btn); actions.appendChild(lab); actions.appendChild(toast);
+    body.appendChild(actions); body.appendChild(det);
+    li.appendChild(body); list.appendChild(li);
+  });
+  updateProgress();
+})();
+</script>

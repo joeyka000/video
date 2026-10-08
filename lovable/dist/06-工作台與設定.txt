@@ -1,0 +1,14 @@
+完成「工作台」首頁與「設定」。
+
+/ 工作台：
+- 問候語依台北時間（早安／午安／晚安／夜深了），下面一排快捷按鈕：看熱點、匯入日報、去改寫、排日曆
+- 四個數字卡：待做選題（ideas pending 數）、本週排程（schedule_items 本週數）、日報最新掃描時間（trend_scans 最新一筆）、本月 AI 花費（ai_usage_month.cost_usd，美元）
+- 「今日熱點」：Google 熱搜前 5（tw-trends）＋最新 Threads 話題前 5（資料庫），各有「收進選題庫」
+- 「這週一直紅」：近 7 天反覆上榜次數最多的 5 個熱搜詞（trend_terms）
+- 「近期排程」：未來 7 天的 schedule_items
+- 「最近草稿」：drafts 最新 5 份
+
+/settings 設定：
+- 成員（只有管理員能操作）：列出 members，可新增 Email、設定角色（admin／member）、移除；不能移除最後一位管理員
+- AI 用量：本月花費與呼叫次數、最近 30 筆 ai_usage（時間、功能、模型、輸入／輸出 token、費用）；說明「金額為依官方價目的估算，以 Anthropic Console 為準」
+- 說明 Secrets：ANTHROPIC_API_KEY（必填）、CLAUDE_MODEL（預設 claude-opus-5-5）、AI_MONTHLY_BUDGET_USD（預設 20）、CRON_SECRET（自動掃描用，選填）；只說明用途，不顯示任何金鑰值

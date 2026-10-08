@@ -1,0 +1,34 @@
+（選用）每天 10:00／15:00／21:00（台北時間）自動存一場 A1（Google 搜尋趨勢台灣 TOP 20）並用 AI 補分類。
+
+1. 我在 Secrets 加了 `CRON_SECRET`（一串長亂碼）。
+2. 請啟用 pg_cron 與 pg_net，執行下面的 SQL；<PROJECT_REF>、<ANON_KEY> 請替換成這個專案的值，<CRON_SECRET> 我會自己替換（或你從 Secrets 讀取後替換，不要把它顯示在畫面上）。
+3. 如果 Lovable Cloud 不支援 pg_cron，告訴我，改用熱點雷達的「立即存一場 A1」按鈕手動存。
+
+```sql
+-- （選用）每天 10:00／15:00／21:00（台北時間）自動存一場 A1（Google 搜尋趨勢台灣 TOP 20）並用 AI 補分類。
+-- 執行前替換三個值：
+--   <PROJECT_REF>   專案網址 https://<PROJECT_REF>.supabase.co 的那一段
+--   <ANON_KEY>      專案的 anon／publishable key（本來就公開在前端，函式閘道器需要它）
+--   <CRON_SECRET>   自己想一串長亂碼，同一串也要加到 Secrets 的 CRON_SECRET
+-- Lovable Cloud 若不允許 pg_cron／pg_net，就略過這一步，改用頁面上的「立即存一場 A1」按鈕。
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+do $$
+declare
+  slot record;
+begin
+  for slot in select * from (values ('a1-1000', '0 2 * * *'), ('a1-1500', '0 7 * * *'), ('a1-2100', '0 13 * * *')) as v(name, cron) loop
+    perform cron.unschedule(slot.name) where exists (select 1 from cron.job where jobname = slot.name);
+    perform cron.schedule(slot.name, slot.cron, $job$
+      select net.http_post(
+        url := 'https://<PROJECT_REF>.supabase.co/functions/v1/tw-trends',
+        headers := jsonb_build_object('Content-Type', 'application/json',
+                                      'Authorization', 'Bearer <ANON_KEY>',
+                                      'x-cron-secret', '<CRON_SECRET>'),
+        body := '{"action": "save_a1", "classify": true}'::jsonb
+      );
+    $job$);
+  end loop;
+end $$;
+```

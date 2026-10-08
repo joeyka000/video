@@ -1,0 +1,174 @@
+加「發布中心」：一段內容 → AI 改寫成各台灣平台的版本 → 複製到平台手動發布。
+
+1. 我已經在 Lovable Cloud → Secrets 加了 `ANTHROPIC_API_KEY`（Anthropic API 金鑰）。另外請新增兩個選填 Secret 的說明到設定頁：`CLAUDE_MODEL`（預設 claude-opus-5-5；要省一半費用改 claude-sonnet-5-5）、`AI_MONTHLY_BUDGET_USD`（本月 AI 花費上限，預設 20）。金鑰只在 edge function 裡使用，前端絕對不能拿到。
+
+2. 建立 edge function `ai`，程式碼完全照下面。它有兩個動作：rewrite（改寫成各平台版本）與 classify_terms（幫 A1 熱搜詞補分類）；每次呼叫都會把 token 與費用寫進 ai_usage，超過本月上限會拒絕。
+
+3. /publish 頁：
+- 左欄：標題、正文（母稿，多行）、話題標籤（逗號分隔）、平台多選：Instagram、Threads、Facebook、YouTube、TikTok、LINE 官方帳號、Dcard、PTT（key 依序 instagram、threads、facebook、youtube、tiktok、line、dcard、ptt）
+- 按「AI 改寫成各平台版本」→ `supabase.functions.invoke('ai', { body: { action: 'rewrite', title, body, tags, platforms } })`，顯示載入狀態；完成後顯示這次花費（cost_usd，美元，小數兩位）
+- 右欄：每個選取的平台一張卡片：平台名、字數／上限（Instagram 2200、Threads 500、Facebook 5000、YouTube 5000、TikTok 2200、LINE 500、Dcard 20000、PTT 20000；超過顯示紅色）、可直接編輯的內容、「複製」按鈕；回傳 missing 有值時在該卡片提示重試
+- 從其他頁帶過來的標題或內容（熱點雷達「拿去改寫」、爆文「拿去拆解改寫」）要自動填進表單
+- 「存草稿」寫入 drafts（outputs 存各平台內容）；「加到日曆」選日期與平台，寫入 schedule_items（status 'draft'，draft_id 連回草稿）
+- 頁面下方列出最近 10 份草稿，可點回來繼續編輯
+- 沒有一鍵發布功能；頁面說明寫「複製各平台版本後，到平台手動發布」
+
+```ts
+// ai：呼叫 Claude 的唯一入口（金鑰只在伺服器端）。
+//
+// POST /ai { "action": "rewrite", "title", "body", "tags", "platforms": ["instagram", "threads", ...] }
+//      → { outputs: { instagram: "...", threads: "..." }, usage }
+// POST /ai { "action": "classify_terms", "scan_id": "<A1 掃描 id>" }
+//      → 幫 A1 熱搜詞補「分類」（財經／ETF、娛樂／藝人…），寫回 trend_terms
+//
+// 環境變數（Lovable Cloud → Secrets）：
+//   ANTHROPIC_API_KEY       必填
+//   CLAUDE_MODEL            選填，預設 claude-opus-5-5（要省一半改 claude-sonnet-5-5）
+//   AI_MONTHLY_BUDGET_USD   選填，預設 20；本月花費超過就拒絕呼叫
+//   CRON_SECRET             選填，排程自動補分類時用
+// 每次呼叫的 token 與估算費用寫進 ai_usage。
+import Anthropic from "npm:@anthropic-ai/sdk@^0.132.1";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
+// 美元／百萬 token（2026-10 官方價目；改價時更新這裡）
+const PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
+};
+
+export const PLATFORMS: Record<string, { label: string; spec: string }> = {
+  instagram: { label: "Instagram", spec: "說明文字上限 2,200 字；前兩行是鉤子（之後會被折疊）；可用 emoji；hashtag 5–15 個放文末（上限 30）" },
+  threads: { label: "Threads", spec: "單則上限 500 字；口語、像跟朋友聊天、短句；結尾丟一個問題引留言；最多 1 個主題標籤" },
+  facebook: { label: "Facebook", spec: "粉專貼文；前 2–3 行決定會不會被展開；資訊完整、語氣親切；hashtag 少量或不用" },
+  youtube: { label: "YouTube", spec: "輸出「標題：」一行（上限 100 字、含搜尋關鍵字）＋「說明：」段落（上限 5,000 字），說明末尾 3–5 個 hashtag" },
+  tiktok: { label: "TikTok", spec: "說明精簡、第一句是鉤子；3–5 個 hashtag" },
+  line: { label: "LINE 官方帳號", spec: "群發訊息，300 字內、一則一個重點、附明確行動（連結或優惠碼）；不用 hashtag" },
+  dcard: { label: "Dcard", spec: "輸出「標題：」一行＋內文；分享口吻、少廣告感；若是合作內容要在文末揭露" },
+  ptt: { label: "PTT", spec: "輸出「標題：」一行（加分類，例【心得】【情報】）＋內文；鄉民語感、純文字、不用 emoji 與 hashtag；避免業配感" },
+};
+
+const SYSTEM_REWRITE = `你是台灣的社群內容編輯，把一段內容改寫成各平台可以直接複製發布的版本。
+規則：
+- 全文繁體中文（台灣用語）：影片、帳號、貼文、留言、按讚、限時動態、網路
+- 保留原文的事實、數字、價格、日期，不新增原文沒有的資訊或功效宣稱
+- 純文字輸出，不要 Markdown（不要 **粗體**、# 標題、表格、程式碼區塊）；需要分段就直接換行
+- 嚴格照指定格式：每個平台以「===平台代號===」開頭，接著就是該平台的正文，不要任何額外說明`;
+
+const SYSTEM_CLASSIFY = `你是台灣的社群趨勢分析師。替 Google 搜尋趨勢（台灣）的熱搜詞標上分類，格式「大類/子類」，例如：
+財經/ETF、財經/股市、娛樂/藝人、娛樂/戲劇、政治/人物、體育/棒球、生活/天氣、社會/事件、科技/產業、時事/國際、彩券/博弈。
+只輸出 JSON 物件：鍵是熱搜詞原文，值是分類字串，不要其他文字。`;
+
+function parseSections(text: string, keys: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const parts = text.split(/^\s*={2,}\s*([a-z]+)\s*={2,}\s*$/m);
+  for (let i = 1; i < parts.length; i += 2) {
+    const k = parts[i].trim();
+    if (keys.includes(k)) out[k] = (parts[i + 1] ?? "").trim();
+  }
+  return out;
+}
+
+async function callClaude(system: string, user: string, maxTokens: number) {
+  const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
+  const model = Deno.env.get("CLAUDE_MODEL") ?? "claude-opus-5-5";
+  const response = await client.beta.messages.create({
+    model,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user", content: user }],
+    output_config: { effort: "medium" },
+    // 被安全分類器誤擋時，由 API 自動改用建議的備援模型重跑（不用自己挑模型）
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+  });
+  if (response.stop_reason === "refusal") throw new Error("模型拒絕了這個請求，請調整內容後再試");
+  const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+  return { text, model: response.model ?? model, usage: response.usage, truncated: response.stop_reason === "max_tokens" };
+}
+
+function cost(model: string, u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null }) {
+  const p = PRICES[model] ?? PRICES["claude-opus-5-5"];
+  return (u.input_tokens * p.input + u.output_tokens * p.output + (u.cache_read_input_tokens ?? 0) * p.cacheRead) / 1e6;
+}
+
+async function handler(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (!Deno.env.get("ANTHROPIC_API_KEY")) return json({ error: "還沒設定 ANTHROPIC_API_KEY（Lovable Cloud → Secrets）" }, 500);
+  const url = Deno.env.get("SUPABASE_URL")!;
+  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const cronOk = !!Deno.env.get("CRON_SECRET") && req.headers.get("x-cron-secret") === Deno.env.get("CRON_SECRET");
+  let userId: string | null = null;
+  if (!cronOk) {
+    const userClient = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+    });
+    const { data: member } = await userClient.rpc("is_member");
+    if (member !== true) return json({ error: "請先登入，並確認你的 Email 在成員名單裡" }, 401);
+    userId = (await userClient.auth.getUser()).data.user?.id ?? null;
+  }
+
+  // 本月預算
+  const budget = Number(Deno.env.get("AI_MONTHLY_BUDGET_USD") ?? 20);
+  const { data: month } = await admin.from("ai_usage_month").select("cost_usd").single();
+  if (Number(month?.cost_usd ?? 0) >= budget) {
+    return json({ error: `本月 AI 花費已達上限 US$${budget}（可在 Secrets 調整 AI_MONTHLY_BUDGET_USD）` }, 402);
+  }
+
+  const body = await req.json().catch(() => ({}));
+  try {
+    if (body.action === "rewrite") {
+      const keys: string[] = (body.platforms ?? []).filter((k: string) => PLATFORMS[k]);
+      if (!keys.length) return json({ error: "請至少選一個平台" }, 400);
+      if (!String(body.body ?? "").trim()) return json({ error: "正文是空的" }, 400);
+      const user = [
+        `標題：${body.title ?? ""}`, `話題標籤：${body.tags ?? ""}`, "", "原文：", String(body.body), "",
+        "改寫成以下平台（照各平台規格）：",
+        ...keys.map((k) => `- ${k}（${PLATFORMS[k].label}）：${PLATFORMS[k].spec}`),
+        "", "輸出格式：", ...keys.map((k) => `===${k}===\n<${PLATFORMS[k].label} 正文>`),
+      ].join("\n");
+      const r = await callClaude(SYSTEM_REWRITE, user, 16000);
+      const outputs = parseSections(r.text, keys);
+      const c = cost(r.model, r.usage);
+      await admin.from("ai_usage").insert({
+        feature: "rewrite", model: r.model, input_tokens: r.usage.input_tokens, output_tokens: r.usage.output_tokens,
+        cache_read_tokens: r.usage.cache_read_input_tokens ?? 0, cost_usd: c, created_by: userId,
+      });
+      return json({ outputs, missing: keys.filter((k) => !outputs[k]), truncated: r.truncated, cost_usd: c });
+    }
+
+    if (body.action === "classify_terms") {
+      const { data: terms, error } = await admin.from("trend_terms").select("id, term").eq("scan_id", body.scan_id);
+      if (error) return json({ error: error.message }, 500);
+      if (!terms?.length) return json({ error: "找不到這場 A1 掃描的熱搜詞" }, 404);
+      const r = await callClaude(SYSTEM_CLASSIFY, terms.map((t) => t.term).join("\n"), 4000);
+      const m = r.text.match(/\{[\s\S]*\}/);
+      const map: Record<string, string> = m ? JSON.parse(m[0]) : {};
+      for (const t of terms) {
+        if (map[t.term]) await admin.from("trend_terms").update({ category: map[t.term] }).eq("id", t.id);
+      }
+      const c = cost(r.model, r.usage);
+      await admin.from("ai_usage").insert({
+        feature: "classify_terms", model: r.model, input_tokens: r.usage.input_tokens, output_tokens: r.usage.output_tokens,
+        cache_read_tokens: r.usage.cache_read_input_tokens ?? 0, cost_usd: c, created_by: userId,
+      });
+      return json({ updated: Object.keys(map).length, cost_usd: c });
+    }
+    return json({ error: "未知的 action" }, 400);
+  } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) return json({ error: "ANTHROPIC_API_KEY 無效" }, 500);
+    if (e instanceof Anthropic.RateLimitError) return json({ error: "Claude 暫時太忙（流量限制），稍後再試" }, 429);
+    if (e instanceof Anthropic.APIError) return json({ error: `Claude API 錯誤 ${e.status}：${e.message}` }, 502);
+    return json({ error: String(e instanceof Error ? e.message : e) }, 500);
+  }
+}
+
+if (typeof Deno !== "undefined" && typeof Deno.serve === "function") Deno.serve(handler);
+```
