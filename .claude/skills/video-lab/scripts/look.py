@@ -7,6 +7,8 @@
   from look import grade, face_safe, film, match, stats, MOODS     # engine.py（frames.py 已把 scripts/ 加進 sys.path）
   img = face_safe(src_frame, 'golden')        # 每個鏡頭：先統一、再調色、臉過亮自動降
   img = film(img, t, fps)                     # 每格最後：顆粒＋暗角（用 seekkit.to_u8 輸出，預設抖色）
+  L = lock(代表格, 'golden', ref=REF)          # 會搖鏡、會換景的鏡頭：一個鏡頭量一次
+  img = apply(src_frame, L)                   # 每格用同一組數字（不會像自動曝光一樣呼吸；finishtest F：0.169 → 0.000）
 
   python look.py board a.jpg b.jpg c.mp4@3.2 --moods clean,day,golden,aot,night -o qa/look_board.jpg
         → 每列一張素材、每欄一個 mood 的對照表（格頭寫 finish.py 的黑位／白位／飽和／膚色），先選 look 再寫引擎
@@ -210,6 +212,68 @@ def match(img, ref, strength=1.0):
         delta[..., 1], delta[..., 2] = da, db
         moved = cv2.cvtColor(np.clip(lab + delta, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB).astype(np.float32) / 255
         out = out + (moved - np.clip(out, 0, 1))  # 只加位移量，不吃掉超過 1 的亮部與浮點精度
+    return np.clip(out, 0, 1)
+
+
+# ───────────────────────── 5b. 整個鏡頭鎖同一組參數 ─────────────────────────
+def _gains(img, mood, wb):
+    m = MOODS[mood]
+    small = cv2.resize(img, (96, 96), interpolation=cv2.INTER_AREA)
+    means = small.reshape(-1, 3).mean(0) + 1e-4
+    gain_wb = (means.mean() / means) ** wb
+    gain = 1.0
+    if m['expo']:
+        L = lum(np.clip(small * gain_wb, 0, 1))
+        mid = float(np.exp(np.log(L + 1e-3).mean()))
+        gain = float(np.clip(m['expo'] / max(mid, 1e-3), 0.75, 1.5) ** 0.6)
+        gain = min(gain, max(1.0, 0.93 / max(float(np.percentile(L, 98)), 1e-3)))
+    return gain_wb.astype(np.float32), gain
+
+
+def lock(img, mood='clean', ref=None, strength=0.7, flare=0.0, limit=0.60, wb=0.35):
+    """一個鏡頭量一次（拿這個鏡頭最有代表性的一格）：白平衡、曝光、臉的降光、對齊 ref 的黑白位與偏色。
+    face_safe／match 每格重量，搖鏡時畫面內容一變，增益就跟著變，看起來像手機自動曝光在呼吸；
+    整個鏡頭用同一組數字（apply）才穩。lock 的結果只由那一格決定，仍符合 seek(t)。"""
+    gw, g = _gains(img, mood, wb)
+    k = 1.0
+    out = None
+    for _ in range(4):
+        out = color(img * gw * (g * k), mood)
+        out = np.clip(glow(out, mood), 0, 1)
+        fl = face_lum(out)
+        if fl is None or fl <= limit:
+            break
+        k *= (limit / fl) ** 1.3
+    L = dict(mood=mood, gw=gw, g=g * k, flare=flare, lin=None, dab=None)
+    if ref is not None:
+        st = stats(out)
+        b0, w0, b1, w1 = st['black'] / 255, st['white'] / 255, ref['black'] / 255, ref['white'] / 255
+        if w0 - b0 > 0.2:
+            L['lin'] = (b0, w0, b1, w1, strength)
+            out = out + ((out - b0) / (w0 - b0) * (w1 - b1) + b1 - out) * strength
+        st = stats(np.clip(out, 0, 1))
+        if st['cast'] and ref.get('cast'):
+            L['dab'] = ((ref['cast'][0] - st['cast'][0]) * strength, (ref['cast'][1] - st['cast'][1]) * strength)
+    return L
+
+
+def apply(img, L):
+    """用 lock() 的參數調色：normalize → color → glow →（flare）→ match，數字全鏡頭一樣。"""
+    out = color(img * L['gw'] * L['g'], L['mood'])
+    out = glow(out, L['mood'])
+    if L['flare'] > 0:
+        out = anamorphic(out, L['flare'])
+    out = np.clip(out, 0, 1)
+    if L['lin']:
+        b0, w0, b1, w1, s = L['lin']
+        out = out + ((out - b0) / (w0 - b0) * (w1 - b1) + b1 - out) * s
+    if L['dab']:
+        u8 = (np.clip(out, 0, 1) * 255).astype(np.uint8)
+        lab = cv2.cvtColor(u8, cv2.COLOR_RGB2LAB).astype(np.float32)
+        lab[..., 1] += L['dab'][0]
+        lab[..., 2] += L['dab'][1]
+        moved = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB).astype(np.float32) / 255
+        out = out + (moved - np.clip(out, 0, 1))
     return np.clip(out, 0, 1)
 
 

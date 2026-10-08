@@ -120,5 +120,19 @@ check('E 調色', abs(st['black'] - 10) <= 2 and soft['clip'] < hard['clip'] * 0
       f"match 後黑位 {st['black']:.1f}（參考 10）；高光 ≥250：直接切 {hard['clip']:.1%} → 柔肩 {soft['clip']:.1%}，"
       f"235–249 過渡 {hard['shoulder']:.1%} → {soft['shoulder']:.1%}")
 
+# F：搖鏡時調色不能呼吸（畫面從亮窗搖到暗室，每格重量增益會跟著變）
+pano = np.ones((H, W * 3, 3), np.float32) * np.float32([0.18, 0.15, 0.12])   # 暗室
+pano[:, :W] = np.float32([0.85, 0.88, 0.92])                                  # 亮窗
+pano[300:700, :] = np.float32([0.45, 0.32, 0.25])                             # 一路都在的木桌（實際亮度不變）
+pano = cv2.GaussianBlur(pano, (0, 0), 25)
+views = [pano[:, int(i * W * 2 / 23):int(i * W * 2 / 23) + W] for i in range(24)]
+table = lambda f: float(f[420:580].mean())
+per = [table(look.face_safe(v, 'day')) for v in views]
+L = look.lock(views[12], 'day')
+lk = [table(look.apply(v, L)) for v in views]
+d_per, d_lock = max(per) - min(per), max(lk) - min(lk)
+check('F 搖鏡', d_lock < 0.01 and d_per > 0.03,
+      f'同一張木桌在 24 格搖鏡裡的亮度變化：每格重量 {d_per:.3f} → 整個鏡頭鎖參數 {d_lock:.3f}')
+
 print('全部通過' if all(results) else f'{results.count(False)} 項沒過')
 sys.exit(0 if all(results) else 1)

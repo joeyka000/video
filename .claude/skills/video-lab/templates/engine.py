@@ -105,6 +105,13 @@ def render_shot(s, t):
 # REF = stats(face_safe(src(V1).at(7.4), MOOD))      # 全片代表鏡頭：白天、有中性色（牆、衣服、桌面）
 # def footage(path, t_src):
 #     return match(face_safe(src(path).at(t_src, blend=True), MOOD), REF, 0.7)
+# 會搖鏡的鏡頭改成整個鏡頭鎖一組參數（每格重量的話，畫面內容一變增益就跟著變，像自動曝光在呼吸）：
+# from look import lock, apply
+# @functools.lru_cache(maxsize=64)
+# def shot_lock(path, t_rep):                      # t_rep：這個鏡頭最有代表性的那一格
+#     return lock(src(path).at(t_rep), MOOD, ref=REF, strength=0.7)
+# def footage(path, t_src, t_rep):
+#     return apply(src(path).at(t_src, blend=True), shot_lock(path, t_rep))
 
 
 # ───────── 疊層 ─────────

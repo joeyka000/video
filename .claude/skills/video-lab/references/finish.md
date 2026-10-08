@@ -57,6 +57,15 @@ def frame(t):
     return to_u8(film(c, t, FPS, grain=0.025))  # 8–9
 ```
 
+**會搖鏡、會換景的鏡頭，整個鏡頭鎖一組參數**：`face_safe`／`match` 每格都重量一次，搖鏡時畫面內容一變（亮窗→暗室），增益就跟著變，同一張桌子會一格亮一格暗，像手機自動曝光在呼吸（`finishtest.py` F：同一張木桌在 24 格搖鏡裡亮度差 0.169）。改成一個鏡頭量一次：
+
+```python
+from look import lock, apply
+L = lock(src(V).at(t_rep), 'day', ref=REF, strength=0.7)   # t_rep：這個鏡頭最有代表性的一格（主體清楚、曝光正常）
+img = apply(src(V).at(t_src, blend=True), L)               # 全鏡頭同一組白平衡、曝光、臉的降光、黑白位與偏色（差 0.000）
+```
+手機素材本身已經有自動曝光；鎖參數只是不再疊一層。固定機位、不換景的鏡頭兩種寫法結果一樣。
+
 ---
 
 ## 二、Look board：先選 look，再寫引擎
@@ -187,7 +196,7 @@ python scripts/look.py board a.jpg b.jpg clip.mp4@3.2 ... --moods clean,soft,day
 ## 九、質感自檢（交付前逐題回答，和 `craft.md`〈六〉一起答）
 
 1. look board 給使用者看過、選定一個 mood 了嗎？夜景變體有沒有超過一個？
-2. 每個鏡頭都走了 normalize → color → glow → face_safe → match → film → to_u8 嗎？有沒有哪個鏡頭跳過統一直接調色？
+2. 每個鏡頭都走了 normalize → color → glow → face_safe → match → film → to_u8 嗎？有沒有哪個鏡頭跳過統一直接調色？搖鏡的鏡頭用 `lock`／`apply` 鎖參數了嗎？
 3. `finish.py check` 的「要處理」都處理了，或在評分表寫了理由？
 4. 黑位標準差 ≤ 6、偏色分散 ≤ 4？
 5. 膚色在 111–135° 之間？最重要的那張臉看過放大圖嗎？
@@ -196,4 +205,4 @@ python scripts/look.py board a.jpg b.jpg clip.mp4@3.2 ... --moods clean,soft,day
 8. 光暈、星芒、箔光、漏光的次數與位置符合〈五〉？關掉效果實拍還在講故事？
 9. 字沒有描邊、沒有粗光暈、在下三分之一、移動用 `blit`？
 10. 跟使用者通過的片放在一起看（峇里島 v2、日田 v2），質感有沒有掉檔次？
-11. 改過 `seekkit.py`／`look.py`／`finish.py` 的話，`python scripts/finishtest.py` 全部通過？
+11. 改過 `seekkit.py`／`look.py`／`finish.py` 的話，`python scripts/finishtest.py` 全部通過（A–F）？
