@@ -3,7 +3,10 @@
 Easel 台灣版裡最常用的網頁功能，改成可以部署在 Lovable（Lovable Cloud）的版本：熱點雷達、Threads 熱門話題日報、AI 改寫成各平台版本、選題庫、內容日曆。
 不含 AI 代理技能、影片、字幕、配音、自動發文（那些留在 `easel-tw/` 或 video-lab）。
 
-## 怎麼用
+## 現在的 Lovable 專案要注意
+Lovable 新開的專案是 TanStack Start（伺服器函式、Drizzle 遷移），不是 Vite＋Supabase Edge Functions。下面的 `supabase/functions/` 與 `dist/` 指令是給舊架構用的；在 TanStack Start 專案裡，同樣的功能已改寫成伺服器函式（`src/lib/*.server.ts`＋`src/lib/workbench.functions.ts`、排程入口 `src/routes/api/cron/save-a1.ts`），直接 push 到 Lovable 專案的 GitHub repo 即可同步，不用貼指令。
+
+## 怎麼用（舊架構）
 照 `dist/` 的順序，一步一個檔案，整段貼進 Lovable 對話框（`dist/` 已把程式碼嵌進指令）：
 
 | 步驟 | 檔案 | 內容 |
