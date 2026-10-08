@@ -431,6 +431,21 @@ def grain(c, t, fps, amt=0.016):
     c += n[..., None] * amt * (0.35 + 2.6 * L * (1 - L))
 
 
+def keep_sharp(img, rect, bg=None, blur=7, feather=6):
+    """只留 rect（x0, y0, x1, y1）清楚，其他做成淺景深糊掉：遮登機證條碼、證件號碼、背景螢幕上別人的影視內容。
+    糊在 1/4 解析度算（blur=7 ≈ 全解析度 28 px，條碼與小字完全讀不出）；feather 要小，條碼才不會落在半清楚的羽化帶。
+    bg：固定的糊背景。背景有電視、螢幕會換畫面時，傳整段平均過的糊圖，不然換畫面那格會像多閃一刀。"""
+    h, w = img.shape[:2]
+    m = np.zeros((h, w), np.float32)
+    x0, y0, x1, y1 = (int(round(v)) for v in rect)
+    m[max(0, y0):y1, max(0, x0):x1] = 1.0
+    m = cv2.GaussianBlur(m, (0, 0), feather)[..., None]
+    if bg is None:
+        small = cv2.resize(img, (w // 4, h // 4), interpolation=cv2.INTER_AREA)
+        bg = cv2.resize(cv2.GaussianBlur(small, (0, 0), blur), (w, h), interpolation=cv2.INTER_LINEAR)
+    return img * m + bg * (1 - m)
+
+
 def halation(c, thr=0.78, k=0.18, col=(1.0, 0.55, 0.35)):
     """亮部外暈（膠片感），只動高光。"""
     h, w = c.shape[:2]
