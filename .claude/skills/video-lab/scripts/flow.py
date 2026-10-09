@@ -566,6 +566,13 @@ def check_video(a):
 
 
 # ───────────────────────── check：engine（正式渲染前） ─────────────────────────
+_ENGINE_RENDER = None
+
+
+def _render_many(ts):
+    return {t: _ENGINE_RENDER(t) for t in ts}
+
+
 def check_engine(a):
     sys.path.insert(0, HERE)
     import frames as FR
@@ -576,15 +583,28 @@ def check_engine(a):
     pw, ph = sizes(m.W, m.H, a.pair)
     aw, ah = sizes(m.W, m.H, 256)
 
+    shots = sorted([(float(s[0]), float(s[1])) for s in m.SHOTS])
+    cache = {}
+
     def render(t):
+        if t in cache:
+            return cache[t]
         im = m.frame(min(max(t, 0), m.TOTAL - 1e-3))
         return cv2.resize(np.ascontiguousarray(im[..., :3]), (pw, ph), interpolation=cv2.INTER_AREA)
-
-    shots = sorted([(float(s[0]), float(s[1])) for s in m.SHOTS])
     # 剪點落在拍子上（2.14 秒）不一定剛好是整格：frames.py 第 i 格在 t = i/fps，B 的第一格是 t ≥ s0 的那一格（無條件進位），
     # 用四捨五入會把 A 的最後一格當成 B 的第一格，整刀被誤判成「畫面連續」
     cuts = sorted({math.ceil(s0 * fps - 1e-6) for s0, _ in shots if s0 > 1e-6})
     print(f'{a.engine}：{len(shots)} 個鏡頭、{len(cuts)} 個剪點，每刀渲 14 格…', file=sys.stderr)
+    need = sorted({(fc + k) / fps for fc in cuts for k in range(-7, 7)} | {(t0 + t1) / 2 for t0, t1 in shots})
+    jobs = max(1, int(getattr(a, 'jobs', 1) or 1))
+    if jobs > 1:                     # 每個行程各自算一段時間（fork 共用已載入的 engine；每格只由 t 決定，順序無關）
+        import multiprocessing as mp
+        global _ENGINE_RENDER
+        _ENGINE_RENDER = render
+        chunks = [need[i::jobs] for i in range(jobs)]
+        with mp.get_context('fork').Pool(jobs) as pool:
+            for part in pool.map(_render_many, chunks):
+                cache.update(part)
     S, C, pairs = [], [], {}
     win = {}
     for fc in cuts:
@@ -929,6 +949,7 @@ def main():
     s = sp.add_parser('check', help='剪點與鏡頭檢查')
     s.add_argument('video', nargs='?')
     s.add_argument('--engine', help='seek(t) engine.py：剪點取自 SHOTS，正式渲染前用')
+    s.add_argument('--jobs', type=int, default=os.cpu_count() or 1, help='engine 模式平行渲染的行程數（預設＝核心數）')
     s.add_argument('--cuts', help='剪點表：秒數清單或 cutlist.py／render.py --dump-cuts 的 cuts.json')
     s.add_argument('-o', '--out', default='out/flow')
     s.add_argument('--pair', type=int, default=480, help='拼圖與視線點用的長邊畫素（預設 480）')
