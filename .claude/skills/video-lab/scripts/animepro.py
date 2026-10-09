@@ -884,7 +884,7 @@ def grad_sprite(text, size, font, index, tracking, top, bottom):
 
 def put_text(c, text, size, x, y, op=1.0, font=CJK_B, index=CJK_TC, tracking=0.04, col=(1.0, 1.0, 1.0), grad=None,
              shadow=0.55, glow=0.25, align='center', cut=None):
-    """字（中心線 y）：寬柔陰影＋淡光暈＋字本身；grad=(上色, 下色) 漸層填色；cut＝0–1 只顯示左邊這一段（卡拉 OK 用）。"""
+    """字（中心線 y；align＝center／left／right）：寬柔陰影＋淡光暈＋字本身；grad=(上色, 下色) 漸層填色；cut＝0–1 只顯示左邊這一段（卡拉 OK 用）。"""
     if op <= 0:
         return
     s, sh, pad = _txt_fx(text, size, font, index, tracking)
@@ -893,7 +893,7 @@ def put_text(c, text, size, x, y, op=1.0, font=CJK_B, index=CJK_TC, tracking=0.0
     elif col != (1.0, 1.0, 1.0):
         s = _txt(text, size, font, index, tracking, tuple(col))
     h, w = s.shape[:2]
-    x0 = x - w / 2 if align == 'center' else x
+    x0 = x - w / 2 if align == 'center' else (x - w if align == 'right' else x)
     y0 = y - h / 2
     if cut is not None:
         if cut <= 0:

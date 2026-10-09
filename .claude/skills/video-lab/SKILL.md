@@ -42,6 +42,10 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/look.py`：調色與膠片質感（`normalize`／`color`／`tone` 柔肩／`glow`／`anamorphic`／`face_safe`／`match`＋`stats` 鏡頭對齊／`film` 顆粒暗角／`light_leak`／`holo_sweep`／`glints`；mood：clean、soft、day、golden、aot、night、bw）；`look.py board` 同一批素材套不同 mood 的對照表（格頭有質感數字）
 - `scripts/finishtest.py`：看不見的精度回歸測試（緩推不閃、字不抖、漸層沒色階、標點擠壓、調色對齊）；改過 seekkit／look／finish 之後跑
 - `scripts/animepro.py`：動漫風・撮影質感版（**要質感的動漫風用這個**）：`satsuei` 動畫撮影調色（天空、暗部、亮部）、`bloom`／`diffusion`、透過光、景深光斑、光束、後光、鏡頭光斑、漏光、`punch` 推近＋放射模糊＋色散、發光閃、立體打光的收服球與球形轉場、能量線、衝擊波光環、玻璃質感徽章、毛玻璃面板、柔陰影＋金色漸層卡拉 OK、發光的進化；`animepro.py demo 圖.jpg`（`references/anime.md`〈四之二〉）
+- `scripts/mapfx.py`：真實地圖運鏡：Sentinel-2 無雲衛星圖（EOX，非商用）／NASA Blue Marble 圖磚拼接、兩層三線性縮放（不閃）、俯仰傾斜＋大氣霧、van Wijk 平滑飛行 `fly`、大圓航線 `arc`、地面路線 `route`、落點脈衝與引線地標 `pin`、飛機 `plane`、來源標註 `credit`；渲染前 `prefetch`。旅行片「從哪飛到哪」「今天去了哪」用真的地球，地名用 GPS 反查（Nominatim）。`mapfx.py demo`
+- `scripts/matte.py`：去背（ISNet）、單張深度（Depth-Anything-V2）、照片 2.5D 視差 `parallax`、輪廓光 `rim`；結果存磁碟快取。雜亂的商品堆（盒子疊盒子）ISNet 會抓錯，改用手動四角的矩形遮罩
+- `scripts/transfx.py`：題材轉場（轉場動詞從畫面的東西長出來）：`burn` 燒開、`ripple` 水滴漣漪、`leaves` 落葉掃過、`clouds` 穿雲、`light_band` 光帶、`whip` 甩鏡、`zoom_through` 衝進去、`iris` 物件位置開圓、`encounter` 遊戲遇敵（寶可夢題材一支片一次）；`transfx.py demo`
+- `scripts/epfx.py`：動畫「一集」的語言：章名卡 `chapter`（DAY＋大數字＋章名）、漫畫斜切分格 `panels`／`layout`、圖鑑掃描 `dex_scan`（角框、掃描線、輪廓光、資料卡，只寫真實資訊）、`tsuzuku`（つづく／未完待續片尾）；`epfx.py demo`
 - `scripts/animefx.py`：動漫風・卡通版（使用者評為陽春，只在要刻意復古／搞笑時用）：實拍轉賽璐璐 `cel`、集中線、速度線、衝擊格、白閃、震動、放射光、星點、光束、閃電、屬性粒子、動畫 OP 描邊字與卡拉 OK、膠囊標籤、砸字、カットイン色帶、遊戲對話框、收服用的球與球形轉場、收服星星、進化閃光、絕望直線；`animefx.py demo 圖.jpg` 出對照表（用法與分寸見 `references/anime.md`〈四之一〉）
 - `scripts/finish.py`：質感檢查（壓縮後的成片或 engine）：每個鏡頭的高光硬切、死黑、黑位與中性色是否全片統一、顏色爆掉、膚色角度、漸層色階 → `report.md`、`grade.jpg`、`grade.png`
 - `scripts/flow.py`：剪接流暢度（`check`：每個剪點的視線跳、方向、景別、明暗、色溫、跳接、入點糊，每個鏡頭的閱讀時間、重複格、實拍覆蓋率，整支片的節奏 vs 音樂能量 → `report.md`、`cuts.jpg`、`cuts.review.json`、`pace.png`；`--engine engine.py` 在正式渲染前只渲剪點前後；`pick`：幫一個鏡頭挑入點）
