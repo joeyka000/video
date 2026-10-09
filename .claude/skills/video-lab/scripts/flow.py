@@ -601,7 +601,8 @@ def check_engine(a):
         import multiprocessing as mp
         global _ENGINE_RENDER
         _ENGINE_RENDER = render
-        chunks = [need[i::jobs] for i in range(jobs)]
+        n = len(need)                # 連續的一段給同一個行程：素材解碼與快取才連得上（交錯分配會一直重新 seek）
+        chunks = [need[i * n // jobs:(i + 1) * n // jobs] for i in range(jobs)]
         with mp.get_context('fork').Pool(jobs) as pool:
             for part in pool.map(_render_many, chunks):
                 cache.update(part)
