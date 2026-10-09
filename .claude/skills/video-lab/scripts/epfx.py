@@ -7,6 +7,7 @@
   polys = E.layout('h3', W, H); c = E.panels(bg, [img1, img2, img3], polys, [e1, e2, e3])
   E.dex_scan(c, m, e, no=4, name='TCG Collector', lines=['Sidakarya, Denpasar', '10.04 15:13'])
   E.tsuzuku(c, e, '未完待續', '峇里島　還有七天')
+  E.dex_tag(c, e, 640, 300, 420, 760, 25, '皮卡丘', ['電'], '30th CELEBRATION　印尼版')   # 指著東西的小圖鑑卡
   python epfx.py demo 人物照.jpg [A.jpg B.jpg] -o /tmp/ep.jpg
 """
 import functools
@@ -186,7 +187,8 @@ def _bracket(c, x0, y0, x1, y1, L, col, op, width=3):
 def dex_scan(c, m, e, no=None, name='', lines=(), col=(0.80, 0.95, 1.0), accent=GOLD, side='auto', dur=1.1, hold=2.2,
              panel_y=None):
     """圖鑑掃描：背景壓暗、去飽和 → 一條掃描光從主體上緣掃到下緣（掃過的地方留一層細網格、輪廓亮起來）→
-    角框從外收進主體 → 旁邊滑出資料卡（No.、名稱、地點與時間）。m＝主體遮罩（同畫布大小）。e＝開始後秒數。"""
+    角框從外收進主體 → 旁邊滑出資料卡（No.、名稱、地點與時間）。m＝主體遮罩（同畫布大小）。e＝開始後秒數。
+    no：整數＝全國圖鑑編號（噴火龍 6、皮卡丘 25：用真的編號，懂的人會截圖）；字串＝其他標記（'SHOP'）。"""
     if e < 0:
         return
     from matte import bbox, edge
@@ -240,7 +242,8 @@ def dex_scan(c, m, e, no=None, name='', lines=(), col=(0.80, 0.95, 1.0), accent=
     op = up * fade
     glass(c, px, py, pw, ph, op, r=18, blur=16, fill=0.16, tint=(0.75, 0.88, 1.0), border=0.35)
     if no is not None:
-        put_text(c, f'No.{no:03d}', 24, px + 28, py + 36, op, CINZEL, 0, 0.30, col=accent, shadow=0.3, glow=0.2, align='left')
+        put_text(c, f'No.{no:03d}' if isinstance(no, int) else str(no), 24, px + 28, py + 36, op, CINZEL, 0, 0.30, col=accent,
+                 shadow=0.3, glow=0.2, align='left')
     dot = np.zeros((14, 14, 4), np.float32)
     cv2.circle(dot, (7, 7), 5, (*RED, 1.0), -1, cv2.LINE_AA)
     blit(c, dot, px + pw - 40, py + 29, op)
@@ -257,6 +260,63 @@ def dex_scan(c, m, e, no=None, name='', lines=(), col=(0.80, 0.95, 1.0), accent=
     lay = np.zeros((h, w), np.float32)
     cv2.line(lay, (int(lx * S), int((py + 36) * S)), (int(tx * S), int((py + 36) * S)), 1.0, 2 * S, cv2.LINE_AA, shift=2)
     c[:] = 1 - (1 - c) * (1 - np.clip(lay[..., None] * np.float32(col) * op * 0.8, 0, 1))
+
+
+# ───────── 圖鑑小標籤 ─────────
+TYPE_COL = {'火': (1.0, 0.45, 0.16), '水': (0.22, 0.58, 1.0), '草': (0.36, 0.80, 0.30), '電': (1.0, 0.80, 0.16),
+            '飛行': (0.55, 0.72, 1.0), '超能力': (1.0, 0.42, 0.68), '一般': (0.75, 0.72, 0.65), '???': (0.55, 0.56, 0.62)}
+
+
+def _chip(c, text, x, y, col, op, h=34):
+    """屬性小膠囊：實色圓角＋白字（遊戲裡的屬性標，縮小成資訊標）。"""
+    from animepro import _rrect
+    f, fi = font_for(text, CJK_B, CJK_TC)
+    w = int(len(text) * 22 + 30)
+    m = _rrect(w, h, h // 2)[..., None]
+    x0, y0 = int(x), int(y - h / 2)
+    H_, W_ = c.shape[:2]
+    if x0 < 0 or y0 < 0 or x0 + w > W_ or y0 + h > H_:
+        return w
+    reg = c[y0:y0 + h, x0:x0 + w]
+    reg[:] = reg * (1 - m * 0.88 * op) + np.float32(col) * 0.92 * m * op
+    put_text(c, text, 21, x0 + w / 2, y0 + h / 2, op, f, fi, 0.06, shadow=0.0, glow=0.0)
+    return w
+
+
+def dex_tag(c, e, x, y, px, py, no, name, types=(), sub=None, k=1.0, out=None, w=380, accent=GOLD):
+    """圖鑑小標籤：目標點亮起 → 引線畫出 → 毛玻璃小卡（No.、名稱、屬性膠囊、一行小字）。
+    (x, y)＝卡片左上；(px, py)＝指向的東西。e＝出現後秒數；out＝開始收的秒數。"""
+    if e < 0 or k <= 0:
+        return
+    o = k if out is None or e < out else k * max(0.0, 1 - (e - out) / 0.3)
+    if o <= 0:
+        return
+    h = 136 + (40 if sub else 0)
+    ul = _u(e, 0.0, 0.25)
+    cx, cy = (x if px < x else x + w), y + 44
+    S = 4
+    lay = np.zeros(c.shape[:2], np.float32)
+    ex, ey = px + (cx - px) * ul, py + (cy - py) * ul
+    cv2.line(lay, (int(px * S), int(py * S)), (int(ex * S), int(ey * S)), 1.0, 2 * S, cv2.LINE_AA, shift=2)
+    cv2.circle(lay, (int(px * S), int(py * S)), 7 * S, 1.0, -1, cv2.LINE_AA, shift=2)
+    g = cv2.GaussianBlur(lay, (0, 0), 6)
+    c[:] = 1 - (1 - c) * (1 - np.clip((lay + g * 0.9)[..., None] * np.float32(accent) * o, 0, 1))
+    uc = _u(e, 0.15, 0.35)
+    if uc <= 0:
+        return
+    xx = x + (1 - uc) * (30 if px < x else -30)
+    _pool(c, xx + w / 2, y + h / 2, w * 0.8, h, 0.35 * o * uc)
+    glass(c, xx, y, w, h, o * uc, r=18, blur=16, fill=0.16, tint=(0.80, 0.90, 1.0), border=0.35)
+    put_text(c, f'No.{no:03d}' if isinstance(no, int) else str(no), 26, xx + 24, y + 34, o * uc, CINZEL, 0, 0.26, col=accent,
+             shadow=0.3, glow=0.2, align='left')
+    tx = xx + 24 + len(f'No.{no:03d}' if isinstance(no, int) else str(no)) * 22 + 20   # 膠囊接在編號後面，不疊字
+    for tp in types:
+        tx += _chip(c, tp, tx, y + 34, TYPE_COL.get(tp, TYPE_COL['一般']), o * uc) + 8
+    f, fi = font_for(name, CJK_B, CJK_TC)
+    put_text(c, name, 42, xx + 22, y + 92, o * uc, f, fi, 0.03, shadow=0.35, glow=0.08, align='left')
+    if sub:
+        put_text(c, sub, 24, xx + 24, y + 140, o * uc * 0.92, CJK_R, CJK_TC, 0.08, col=(0.88, 0.94, 1.0), shadow=0.3, glow=0.0,
+                 align='left')
 
 
 # ───────── つづく ─────────
