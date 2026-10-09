@@ -179,7 +179,7 @@ def _mblur_spr(spr, ang, length):
     return s
 
 
-def leaves(a, b, u, t=0.0, seed=0, n=120, angle=-0.55, speed=1.0):
+def leaves(a, b, u, t=0.0, seed=0, n=170, angle=-0.55, speed=1.0):
     """一陣葉子沿 angle 方向掃過（前緣最密），葉子後面換成 b。近的大、糊、動態模糊長；遠的小、清楚。"""
     from animepro import _rot
     from seekkit import blit
@@ -201,7 +201,7 @@ def leaves(a, b, u, t=0.0, seed=0, n=120, angle=-0.55, speed=1.0):
             continue
         x = w / 2 + (along - 0.5) * L * ca - (lat - 0.5) * L * sa * 1.2 + math.sin(ph * 9 + u * 7) * 30
         y = h / 2 + (along - 0.5) * L * sa + (lat - 0.5) * L * ca * 1.2 + math.cos(ph * 7 + u * 5) * 30
-        r = int(14 + 70 * z ** 2.2 * (w / 1080 + 0.25))
+        r = int((26 + 95 * z ** 2) * (w / 1080 * 0.8 + 0.2))
         spr = leaf_sprite(max(6, r), int(sd * 12))
         spr = _rot(spr, (spin * 360 + u * 400 * (1 if ph > 0.5 else -1)) % 360)
         if z > 0.8:
@@ -225,8 +225,9 @@ def _cloud_field(h, w, seed):
     return cv2.resize(n, (w // 2, H2 // 2), interpolation=cv2.INTER_CUBIC)
 
 
-def clouds(a, b, u, t=0.0, seed=0, sun=(1.0, 0.97, 0.92), shadow=(0.62, 0.68, 0.80)):
-    """穿雲：雲從下往上流過（像飛機爬升穿雲），u=0.5 最厚、在雲後面換鏡頭。雲有受光面（暖白）與背光面（灰藍），邊緣柔。"""
+def clouds(a, b, u, t=0.0, seed=0, sun=(1.0, 0.97, 0.92), shadow=(0.55, 0.62, 0.76)):
+    """穿雲：雲從下往上流過（像飛機爬升穿雲），u=0.5 最厚、在雲後面換鏡頭。雲有受光面（暖白）與背光面（灰藍），
+    最厚的那幾格也看得到雲的團塊與明暗（不是一片平白），薄的地方透出底下的畫面。"""
     h, w = a.shape[:2]
     F = _cloud_field(h, w, seed)
     H2 = F.shape[0]
@@ -234,15 +235,16 @@ def clouds(a, b, u, t=0.0, seed=0, sun=(1.0, 0.97, 0.92), shadow=(0.62, 0.68, 0.
     win = F[off:off + h // 2]
     if win.shape[0] < h // 2:
         win = np.pad(win, ((0, h // 2 - win.shape[0]), (0, 0)), mode='edge')
-    cover = math.sin(math.pi * min(max(u, 0), 1)) ** 0.8
-    th = 0.86 - cover * 0.84
-    dens = np.clip((win - th) / 0.16, 0, 1)
-    light = np.clip(0.5 + (win - np.roll(win, 6, 0)) * 9, 0, 1)        # 上方是太陽：往上變亮的面受光
+    cover = math.sin(math.pi * min(max(u, 0), 1)) ** 0.7
+    th = 0.78 - cover * 0.60
+    dens = np.clip((win - th) / 0.22, 0, 1) ** 0.8 * (0.80 + 0.17 * cover)
+    sh = cv2.GaussianBlur(win, (0, 0), 3)
+    light = np.clip(0.45 + (sh - np.roll(sh, 9, 0)) * 16 + (win - 0.5) * 0.6, 0, 1)   # 上方是太陽：往上變亮的面受光
     col = np.float32(shadow) + (np.float32(sun) - np.float32(shadow)) * light[..., None]
-    dens = cv2.resize(cv2.GaussianBlur(dens, (0, 0), 2.0), (w, h), interpolation=cv2.INTER_CUBIC)
+    dens = cv2.resize(cv2.GaussianBlur(dens, (0, 0), 1.5), (w, h), interpolation=cv2.INTER_CUBIC)
     col = cv2.resize(col, (w, h), interpolation=cv2.INTER_CUBIC)
     base = a if u < 0.5 else b
-    haze = 0.25 * cover
+    haze = 0.18 * cover
     base = base * (1 - haze) + np.float32(sun) * haze
     return np.clip(base * (1 - dens[..., None]) + col * dens[..., None], 0, 1).astype(np.float32)
 

@@ -127,19 +127,18 @@ def _cover(img, w, h, z=1.0, cx=0.5, cy=0.5):
     return cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
 
 
-def panels(bg, imgs, polys, es, dirs=None, focus=None, zooms=None, gutter=PAPER, border=0, shadow=0.45, slide=0.42):
+def panels(bg, imgs, polys, es, dirs=None, focus=None, zooms=None, gutter=PAPER, border=0, shadow=0.45, slide=0.42, gut_w=8):
     """把 imgs（各自整格大小的畫面）放進 polys 的格子裡。es[i]＝第 i 格進場後秒數（<0 還沒進場）。
-    每格從 dirs[i]（'l','r','u','d'）滑進來、0.42 秒減速停住；格子之間是紙白的溝，格子邊下有柔陰影。bg＝格子還沒進來時的底。"""
+    每格從 dirs[i]（'l','r','u','d'）滑進來、0.42 秒減速停住；每格外圍一圈紙白（相鄰兩格接起來就是溝），格子邊下有柔陰影。
+    bg＝格子底下的畫面（上一個鏡頭的延續、壓暗），不要整片白紙：剛進場那幾格會像空白格。"""
     h, w = bg.shape[:2]
     out = bg.copy()
     n = len(polys)
     dirs = dirs or ['l', 'r', 'l', 'r'][:n]
     focus = focus or [(0.5, 0.5)] * n
     zooms = zooms or [1.0] * n
-    any_in = max(es) >= 0
-    if any_in:
-        k = min(1.0, max(es) / 0.12)
-        out = out * (1 - k) + np.float32(gutter) * k
+    if max(es) >= 0:                       # 格子進來以後底下壓暗一點，格子才浮在上面
+        out = out * (1 - 0.45 * min(1.0, max(es) / 0.25))
     for i, (pts, img, e) in enumerate(zip(polys, imgs, es)):
         if e < 0:
             continue
@@ -159,6 +158,9 @@ def panels(bg, imgs, polys, es, dirs=None, focus=None, zooms=None, gutter=PAPER,
             continue
         full[sy0:sy1, sx0:sx1] = cell[sy0 - oy:sy1 - oy, sx0 - ox:sx1 - ox]
         m = poly_mask(h, w, P)
+        gw = max(3, int(gut_w))                    # 溝＝每格外圍一圈紙白（相鄰兩格的外框接起來就是溝）
+        ring = np.clip(cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * gw + 1, 2 * gw + 1))) - m, 0, 1)
+        out = out * (1 - ring[..., None]) + np.float32(gutter) * ring[..., None]
         if shadow > 0:
             sh = cv2.GaussianBlur(np.roll(np.roll(m, 10, 0), 6, 1), (0, 0), 14)
             out *= 1 - (sh * shadow * (1 - m))[..., None]

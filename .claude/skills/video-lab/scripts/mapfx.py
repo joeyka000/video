@@ -404,7 +404,7 @@ def pulse(c, x, y, e, col=GOLD, rmax=90, period=1.2, k=1.0, width=3):
     c += (cv2.GaussianBlur(lay, (0, 0), 1.2) * k)[..., None] * np.float32(col)
 
 
-def pin(c, P, lat, lon, e, title=None, sub=None, side=1, col=GOLD, k=1.0, lead=120, size=40):
+def pin(c, P, lat, lon, e, title=None, sub=None, side=1, col=GOLD, k=1.0, lead=120, size=40, pulse_r=70, dot_r=9):
     """地標：落下的光點（第 0–0.3 秒）＋脈衝＋斜引線＋兩行字（中文名、英文小字）。e＝出現後經過秒數。"""
     q = P(lat, lon)
     if q is None or e < 0 or k <= 0:
@@ -412,8 +412,9 @@ def pin(c, P, lat, lon, e, title=None, sub=None, side=1, col=GOLD, k=1.0, lead=1
     from seekkit import ease_out
     x, y, _ = q
     a = ease_out(min(1.0, e / 0.3))
-    dot(c, x, y, 9, col, k * a)
-    pulse(c, x, y, e, col, 70, 1.4, 0.8 * k * a)
+    dot(c, x, y, dot_r, col, k * a)
+    if pulse_r > 0:
+        pulse(c, x, y, e, col, pulse_r, 1.4, 0.8 * k * a)
     if title is None:
         return
     u = ease_out(min(1.0, max(0.0, (e - 0.12) / 0.4)))
