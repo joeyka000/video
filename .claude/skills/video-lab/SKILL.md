@@ -56,6 +56,8 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/frames.py`：引擎執行器（`still` 抽格、`sheet` 縮圖總覽＋評分表、`video` 切段平行渲染＋混音、`deliver` HEVC 兩段式壓到上傳上限內，帶暗部與顆粒保護參數 `aq-mode=3:psy-rdoq=2`）
 - `scripts/review.py`：縮圖總覽評分關卡（`sheet` 從影片或圖檔出總覽、`gate` 全部 ≥ 8 才過、`diff` 兩輪對照）；`gate` 也吃 `flow.py` 的剪點評分表
 - `scripts/brand.py`：網址 → 品牌素材包（桌機／手機真截圖、區塊截圖、logo 原檔、依面積算的品牌色、字型、真實文案）
+- `scripts/assets.py`：網址 → 頁面實際載入的每一張圖（開 WebGL，3D 輪播與懶載入的高解析商品圖原檔也抓得到）＋ index.json（alt、尺寸）＋總覽
+- `scripts/stills.py`：平面圖（活動圖、貼文、限動、橫幅、A6 桌卡）HTML 排版 → 截圖；出框／壓字檢查、印刷 PNG／PDF、`sheet` 總覽、`qr` 驗證；做法見 `references/stills.md`
 - `references/easel.md`：Easel 技能庫索引：值得用的腳本與用法、花錢與發文的禁區、簡轉繁規則
 - `references/review.md`：1–10 分錨點、評分紀律、禁用清單（老套）與替代做法、常見扣分原因
 - `templates/engine.py`：seek(t) 影片引擎範本（真截圖開場、跟著捲動的 callout、自動換行的片尾）
