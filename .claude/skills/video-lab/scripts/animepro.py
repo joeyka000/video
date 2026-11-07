@@ -1029,6 +1029,74 @@ def evolution(a, b, u, t, dur=1.3, f0=2.5, f1=16.0):
     return out
 
 
+# ───────────────────────── 10. 夜景・煙火（新海誠式，釜山煙火節スパークル版） ─────────────────────────
+def night_satsuei(img):
+    """夜景版撮影調色：暗部推靛藍（不是死黑也不是整片藍濾鏡）、亮部暖、上方深藍パラ、下方一點紫（城市光）。
+    先用 look 的夜景 mood 把黑位壓好（lift=0），再套這層；之後接 bloom(thr=0.56, k=0.32, r=40)＋diffusion(0.08)。"""
+    x = satsuei(img, sky=False, paint=0.18, sat=1.10, shadow=(0.012, 0.018, 0.055), warm=(0.028, 0.010, -0.020))
+    para(x, top=(0.10, 0.12, 0.30), bottom=(0.40, 0.22, 0.42), k_top=0.24, k_bot=0.08)
+    return x
+
+
+@functools.lru_cache(maxsize=4)
+def _cross_kernel(L):
+    k = np.exp(-np.abs(np.arange(-L, L + 1, dtype=np.float32)) / (L / 4.0))
+    return k / k.sum()
+
+
+def star_filter(c, k=0.5, thr=0.80, L=34):
+    """クロスフィルター（星芒濾鏡）：畫面裡本來就亮的點（煙火火花、路燈）各自長出細的十字芒。
+    芒的位置與亮度全來自實拍，不是另外貼的星星；水平＋垂直兩個 1D 卷積，半解析度算，一格約 40 ms。"""
+    h, w = c.shape[:2]
+    s = cv2.resize(c, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+    hi = (np.clip((lum(s) - thr) / (1 - thr), 0, 1) ** 2)[..., None] * s
+    ker = _cross_kernel(L)
+    rays = cv2.filter2D(hi, -1, ker[None, :]) + cv2.filter2D(hi, -1, ker[:, None])
+    screen(c, cv2.resize(rays, (w, h), interpolation=cv2.INTER_LINEAR) * 2.2, k)
+
+
+def comet_path(p0, p1, u, arc=-28.0):
+    """彗星路徑：p0 → p1 的直線再加一點弧（u=0–1）。"""
+    p0, p1 = np.float32(p0), np.float32(p1)
+    return p0 + (p1 - p0) * u + np.float32([0, arc]) * math.sin(math.pi * min(max(u, 0.0), 1.0))
+
+
+def comet(c, e, p0, p1, t0=0.35, dur=3.4, tail=0.36, seed=4242, n_sparks=46):
+    """彗星：藍白的頭（透過光十字）＋往後漸細、由青轉紫的尾巴，沿路灑下會閃、往下飄的小火花。
+    e＝鏡頭內秒數；t0 進場、dur 橫越時間；tail＝尾巴長（路徑比例）。尾巴在全解析度畫（半解析度放大會有鋸齒）。
+    搭配片名：字的不透明度用「彗星頭的 x − 60 px」做 220 px 的柔邊揭露，字就像被彗星點亮。"""
+    h, w = c.shape[:2]
+    u = (e - t0) / dur
+    if u < -0.01 or u > 1 + tail + 0.4:
+        return
+    fade = 1 - min(max((u - 1.0) / (tail + 0.3), 0.0), 1.0)
+    lay = np.zeros((h, w, 3), np.float32)
+    n = 90
+    for i in range(n):
+        s0, s1 = tail * i / n, tail * (i + 1) / n
+        if u - s1 < -0.02:
+            continue
+        a, b = comet_path(p0, p1, u - s0), comet_path(p0, p1, u - s1)
+        q = i / n
+        col = np.float32([0.85, 0.96, 1.0]) * (1 - q) + np.float32([0.62, 0.52, 1.0]) * q
+        cv2.line(lay, tuple(int(round(v * 16)) for v in a), tuple(int(round(v * 16)) for v in b),
+                 tuple(float(v) for v in col * (1 - q) ** 1.7 * fade), max(1, int(round(9 * (1 - q) ** 1.3 + 1))), cv2.LINE_AA, shift=4)
+    lay = glow_layer(cv2.GaussianBlur(lay, (0, 0), 1.6), r=44, k=1.5)
+    screen(c, lay, 0.95)
+    if u <= 1.02:
+        hx, hy = comet_path(p0, p1, u)
+        add_c(c, glint_sprite(110, (0.88, 0.96, 1.0)), hx, hy, 0.95)
+    rng = np.random.default_rng(seed)
+    for i in range(n_sparks):
+        ub, off, sz = rng.random(), rng.normal(0, 18, 2), rng.random()
+        age = e - (t0 + ub * dur)
+        if age < 0 or age > 1.6:
+            continue
+        x, y = comet_path(p0, p1, ub) + off + np.float32([10 * age, 34 * age])
+        a = (1 - age / 1.6) ** 1.4 * (0.5 + 0.5 * math.sin(age * 19 + i))
+        add_c(c, glint_sprite(int(10 + 10 * sz), (1.0, 0.95, 0.88)), x, y, a)
+
+
 # ───────────────────────── demo ─────────────────────────
 def _demo(a):
     img = cv2.imread(a.input)[..., ::-1].astype(np.float32) / 255
@@ -1062,6 +1130,8 @@ def _demo(a):
     tile('evolution', lambda c: evolution(c, c, 0.3, 0.4))
     tile('lens_flare', lambda c: lens_flare(c, 760, 300, 0.8))
     tile('energy', lambda c: energy_lines(c, 0.25, 0.5, (100, 900, 700, 1500), (820, 500)))
+    tile('night+star', lambda c: (c.__setitem__(slice(None), night_satsuei(c)), star_filter(c), bloom(c, 0.56, 0.32, 40), diffusion(c, 0.08)))
+    tile('comet', lambda c: comet(c, 2.0, (-170, 250), (1250, 575)))
     rows = [np.hstack(tiles[i:i + 6]) for i in range(0, len(tiles), 6)]
     w = max(r.shape[1] for r in rows)
     rows = [np.pad(r, ((0, 0), (0, w - r.shape[1]), (0, 0))) for r in rows]
