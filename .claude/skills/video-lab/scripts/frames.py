@@ -145,9 +145,10 @@ def _zones(spec, t0, fps):
 
 
 def cmd_deliver(a):
-    dur = probe_dur(a.master)
+    full = probe_dur(a.master)
     t0 = a.t_from or 0.0
-    dur = (min(a.t_to, dur) if a.t_to else dur) - t0
+    to_end = not a.t_to or a.t_to >= full - 0.05      # 壓到片尾就不要下 -t：兩段的格數會差一格，x265 第二段報 CU-tree stats 不完整
+    dur = (full if to_end else a.t_to) - t0
     budget_kbit = a.max_mb * 1024 * 1024 * 8 / 1000 * 0.97
     vk = int(budget_kbit / dur - 192)
     if vk < 600:
@@ -155,7 +156,9 @@ def cmd_deliver(a):
     vk = min(vk, a.cap_kbps)
     log = os.path.join(tempfile.mkdtemp(), 'x265')
     vf = ['-vf', f'noise=alls={a.grain}:allf=t+u'] if a.grain > 0 else []
-    cut = (['-ss', f'{t0:.3f}'] if t0 else []) + ['-i', a.master] + (['-t', f'{dur:.3f}'] if (a.t_from or a.t_to) else [])
+    cut = (['-ss', f'{t0:.3f}'] if t0 else []) + ['-i', a.master] + ([] if to_end else ['-t', f'{dur:.3f}'])
+    if a.t_from or a.t_to:                         # 分段時兩段都鎖同一個格數（片尾那段少壓一格），x265 第二段才不會報 CU-tree stats 不完整
+        cut += ['-frames:v', str(int(round(dur * a.fps)) - (1 if to_end else 0))]
     base = ['ffmpeg', '-v', 'error', '-y'] + cut + vf + ['-c:v', 'libx265', '-preset', 'slow', '-b:v', f'{vk}k', '-tag:v', 'hvc1',
             '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
     # aq-mode=3：位元多分給暗部（暗部漸層不糊成色塊）；psy-rdoq=2：保留顆粒與紋理，不把它當雜訊抹平
