@@ -11,7 +11,8 @@ engine.py 約定（Python）：
   python frames.py sheet  engine.py -o sheet.jpg        → 縮圖總覽（每格編號＋秒數）＋ sheet.review.json 評分表
          [--at 0.5,3,7 | --every 1.5 | --n 24] [--cols 6] [--width 270]
   python frames.py video  engine.py -o master.mp4 [--jobs 4] [--from 0 --to 10] [--audio a.wav] [--crf 14]
-  python frames.py deliver master.mp4 -o post.mp4 [--max-mb 29] [--grain 3]   → HEVC 兩段式，壓在上傳上限內（雲端傳檔上限 30 MiB）
+  python frames.py deliver master.mp4 -o post.mp4 [--max-mb 29] [--grain 3] [--zones 7.2-12:3] [--from 0 --to 43]
+                                                        → HEVC 兩段式，壓在上傳上限內（雲端傳檔上限 30 MiB）
          --grain：壓檔前加一層很淡的動態顆粒（ffmpeg noise）。母帶的平滑漸層（片尾收色、暗場）沒有顆粒時用，
                   壓完 finish.py 量到色階 > 8 就加 --grain 3 重壓（finish.md〈八〉第 2 條）
 
@@ -131,8 +132,22 @@ def probe_dur(path):
     return float(r.stdout)
 
 
+def _zones(spec, t0, fps):
+    """'7.2-12:3,73.8-75.7:2.5'（秒，母帶時間）→ x265 zones（格號，相對這次壓檔的起點）。"""
+    out = []
+    for item in filter(None, (x.strip() for x in (spec or '').split(','))):
+        rng, b = item.split(':')
+        s, e = (float(v) - t0 for v in rng.split('-'))
+        if e <= 0:
+            continue
+        out.append(f'{max(0, int(s * fps))},{int(e * fps)},b={float(b):g}')
+    return '/'.join(out)
+
+
 def cmd_deliver(a):
     dur = probe_dur(a.master)
+    t0 = a.t_from or 0.0
+    dur = (min(a.t_to, dur) if a.t_to else dur) - t0
     budget_kbit = a.max_mb * 1024 * 1024 * 8 / 1000 * 0.97
     vk = int(budget_kbit / dur - 192)
     if vk < 600:
@@ -140,11 +155,17 @@ def cmd_deliver(a):
     vk = min(vk, a.cap_kbps)
     log = os.path.join(tempfile.mkdtemp(), 'x265')
     vf = ['-vf', f'noise=alls={a.grain}:allf=t+u'] if a.grain > 0 else []
-    base = ['ffmpeg', '-v', 'error', '-y', '-i', a.master] + vf + ['-c:v', 'libx265', '-preset', 'slow', '-b:v', f'{vk}k', '-tag:v', 'hvc1',
+    cut = (['-ss', f'{t0:.3f}'] if t0 else []) + ['-i', a.master] + (['-t', f'{dur:.3f}'] if (a.t_from or a.t_to) else [])
+    base = ['ffmpeg', '-v', 'error', '-y'] + cut + vf + ['-c:v', 'libx265', '-preset', 'slow', '-b:v', f'{vk}k', '-tag:v', 'hvc1',
             '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
     # aq-mode=3：位元多分給暗部（暗部漸層不糊成色塊）；psy-rdoq=2：保留顆粒與紋理，不把它當雜訊抹平
     # 實測（finish.md〈四〉）：暗部漸層＋顆粒 0.016 壓 3.8 Mbps，色階 15.8 px → 3.0 px
     xp = 'aq-mode=3:aq-strength=1.2:psy-rdoq=2:log-level=error'
+    # --zones：兩段式會把位元給細節多的格（煙火火花、顆粒），大片平滑的暗場反而被餓到出色階。
+    # 實測（釜山煙火節 v2，1.67 Mbps）：暗城市那幾秒 b=3，整段檔案只多 12%，色階 47 → 4.7 px（整支拉到 4 Mbps 也只有 13.8 px）
+    zs = _zones(a.zones, t0, a.fps)
+    if zs:
+        xp += f':zones={zs}'
     subprocess.run(base + ['-x265-params', f'pass=1:stats={log}:{xp}', '-an', '-f', 'null', '/dev/null'], check=True)
     subprocess.run(base + ['-x265-params', f'pass=2:stats={log}:{xp}', '-c:a', 'aac', '-b:a', '192k',
                            '-movflags', '+faststart', a.out], check=True)
@@ -189,6 +210,10 @@ def main():
     s.add_argument('--max-mb', type=float, default=29)
     s.add_argument('--cap-kbps', type=int, default=12000, help='短片不必塞滿上限')
     s.add_argument('--grain', type=int, default=0, help='壓檔前加動態顆粒（0–255 尺度的振幅；3 = 很淡）')
+    s.add_argument('--zones', default='', help='暗場加碼：「起-迄:倍率,…」（秒，母帶時間），例 7.2-12:3,73.8-75.7:2.5；照 finish.py 的色階欄挑 > 20 px 的鏡頭')
+    s.add_argument('--fps', type=float, default=24, help='母帶影格率（換算 zones 的格號）')
+    s.add_argument('--from', dest='t_from', type=float, default=None, help='只壓一段（分段交付高畫質版）')
+    s.add_argument('--to', dest='t_to', type=float, default=None)
     a = p.parse_args()
     {'still': cmd_still, 'sheet': cmd_sheet, 'video': cmd_video, '_chunk': cmd_chunk, 'deliver': cmd_deliver}[a.cmd](a)
 
