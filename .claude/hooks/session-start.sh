@@ -46,7 +46,7 @@ if ! command -v bun >/dev/null; then
 fi
 
 # 3. Python 套件裝在 ~/video-lab/.venv
-# playwright 版本對齊 /opt/pw-browsers 預裝的 Chromium（chromium-1194），不跑 playwright install
+# playwright 固定 1.56.0；預裝 Chromium 版本不同時下面會把路徑連過去，不跑 playwright install
 if command -v uv >/dev/null; then
   [ -x "$LAB/.venv/bin/python" ] || uv venv -q --python 3.11 "$LAB/.venv" >>"$LOG" 2>&1
   VIRTUAL_ENV="$LAB/.venv" uv pip install -q \
@@ -61,6 +61,24 @@ fi
 
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   echo "export PATH=\"$LAB/.venv/bin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
+fi
+
+# 預裝 Chromium 的版本跟 playwright 套件期望的不同時（映像更新後常見，例：套件要 1194、預裝 1243），
+# 把套件期望的路徑連到預裝那一份；不跑 playwright install、不下載瀏覽器
+want_full=$("$LAB/.venv/bin/python" -c 'from playwright.sync_api import sync_playwright
+with sync_playwright() as p: print(p.chromium.executable_path)' 2>/dev/null || true)
+if [ -n "$want_full" ]; then
+  want_shell=$(echo "$want_full" | sed 's#/chromium-\([0-9]*\)/chrome-linux/chrome#/chromium_headless_shell-\1/chrome-linux/headless_shell#')
+  have_full=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | sort -V | tail -1 || true)
+  have_shell=$(ls -d /opt/pw-browsers/chromium_headless_shell-*/chrome-*/chrome-headless-shell \
+    /opt/pw-browsers/chromium_headless_shell-*/chrome-*/headless_shell 2>/dev/null | sort -V | tail -1 || true)
+  for pair in "$want_full|$have_full" "$want_shell|$have_shell"; do
+    want=${pair%%|*}; have=${pair##*|}
+    if [ ! -e "$want" ] && [ -n "$have" ]; then
+      { mkdir -p "$(dirname "$want")" && ln -sf "$have" "$want" && echo "playwright 瀏覽器路徑 $want → $have" >>"$LOG"; } \
+        || warnings+=("playwright 瀏覽器路徑對齊失敗")
+    fi
+  done
 fi
 
 # 4. 參考庫：公開 repo 不重新散布第三方內容，每次從上游 clone／更新
