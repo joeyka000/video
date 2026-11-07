@@ -23,6 +23,7 @@ effort: xhigh
 
 ## 1. 收素材
 - 網址 → `python VL/scripts/brand.py <網址> -o projects/<案名>/brand`，看 `brand.md`、`swatches.png`、截圖與 logo 候選（每張都要看過再用）
+- iCloud 分享連結 → `python VL/scripts/icloud.py <連結> -o projects/<案名>/media --wait 120`（對方還在上傳時會等）；十分鐘以上的手機原檔先做每顆鏡頭的代理檔（footage.md〈三之 12b〉）
 - 影片 → `ffprobe` 規格；每支出時間碼縮圖（`ffmpeg -vf "fps=2,scale=180:-1,drawtext=…%{pts\:hms}…,tile=10x6"`）逐張看，記下每個動作的秒數，以及每個鏡頭的功能（建立／主體／細節／反應／收）、主色、主形狀、主體位置（配對 match cut 用）；手持素材先穩定化（`VL/scripts/footage.py stabilize` 或 vidstab 兩段式）
 - 照片、歌 → 照 video-lab 技能 C 段（`analyze.py`）與 footage.md
 - 相簿要先分辨「素材」和「成品」：使用者常把剪好的片（自己剪的 IG 片、我們交過的舊成品）存回同一本相簿；有字、有調色、長度剛好 30／60 秒的 mp4 先看縮圖確認，不當素材用。跟舊專案重複的檔案用硬連結（`os.link`），不重抓也不多佔磁碟

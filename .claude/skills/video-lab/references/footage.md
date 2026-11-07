@@ -239,6 +239,12 @@ ffmpeg -i in.mp4 -i bg.mp4 -filter_complex "[0]format=yuva420p,backgroundkey=thr
 - `footage.py slowmo IN -o OUT --factor 2|4 [--interp]`：不加 `--interp` 只有 `setpts=2*PTS`，輸出 fps 看來源：來源 ≥ 48fps（拍 60／120 的片）時輸出 `-r fps÷倍率`（下限 24），每格都是實拍格，是真慢動作（60fps 1 秒 x2 → 30fps 60 格 2.0 秒；120fps x4 → 30fps 120 格 4.0 秒；60fps x4 = 15 低於 24 → 輸出 24fps 96 格、部分格重複）；來源 < 48fps 時保留來源 fps、每格重複（30fps 2 秒 x2 → 30fps 119 格 3.97 秒）。加了 `--interp` 用 `minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1` 補中間格再放慢，輸出維持來源 fps
 - 副作用（實測快速橫移的主體）：主體邊緣出現拖影與撕裂、背景在主體周圍扭曲；慢速、方向單純的動作才好看。1 秒 720p 要 15–20 秒
 
+### 12b 很長的手機原檔（10 分鐘以上、可變影格率）進 seek(t) 引擎
+- iPhone 夜拍是**可變影格率**（釜山煙火：60fps 的檔平均 48fps、24fps 的檔混著 30fps 的間隔），`seekkit.Src` 用固定 fps 換算格數會越讀越偏；長 GOP 的 H.264 每次跳讀也很慢
+- 做法：每顆鏡頭先做**代理檔**——`ffmpeg -ss 入點−1 -t 長度＋1.6 -i 原檔 -vf "scale=1080:1920,fps=原生fps" -c:v libx264 -crf 12 -g 1`（固定影格率、全 I 格、前後留把手），同段聲音另存 wav；引擎用「代理起點＋（入點＋片內秒數×速度）」算格數。範例：`projects/busan_fireworks/work/prep.py`（不進 git，邏輯照抄）
+- 60fps 素材做 24fps 成片時，0.4 倍慢動作剛好一格對一格（不用補格、沒有拖影）；即時播放取相鄰兩格混合，順便帶一點動態模糊
+- 引擎裡的影格快取**存 uint8**（1080×1920 一格 6 MB；存 float32 是 25 MB），同時開的代理檔設上限（`lru_cache(maxsize=3)`）。釜山片第一版存 float32、31 顆鏡頭全開，`flow.py --jobs 3` 每個行程吃到 4 GB，被系統砍掉一個
+
 ### 13 示波器檢查膚色與曝光
 ```bash
 ffmpeg -i in.png -vf "format=yuv444p,vectorscope=mode=color3:graticule=green:flags=name:intensity=0.1,scale=512:512:flags=neighbor" vs.png

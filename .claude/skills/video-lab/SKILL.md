@@ -56,6 +56,8 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/frames.py`：引擎執行器（`still` 抽格、`sheet` 縮圖總覽＋評分表、`video` 切段平行渲染＋混音、`deliver` HEVC 兩段式壓到上傳上限內，帶暗部與顆粒保護參數 `aq-mode=3:psy-rdoq=2`）
 - `scripts/review.py`：縮圖總覽評分關卡（`sheet` 從影片或圖檔出總覽、`gate` 全部 ≥ 8 才過、`diff` 兩輪對照）；`gate` 也吃 `flow.py` 的剪點評分表
 - `scripts/brand.py`：網址 → 品牌素材包（桌機／手機真截圖、區塊截圖、logo 原檔、依面積算的品牌色、字型、真實文案）
+- `scripts/icloud.py`：iCloud 照片分享連結 → 原檔（影片、照片）＋ icloud.json（拍攝時間、長度、寬高）；相簿顯示「正在上傳」時 `--wait 分鐘` 每分鐘再查、出現一個抓一個
+- `scripts/avdelay.py`：影片裡閃光與聲音的時間差 → 距離（煙火、雷、遠處爆破）：天空亮度上升 vs 聲音 onset 互相關，整支＋分段；「光先到、聲音晚 1 秒＝約 340 公尺」這種真實資料層用它量
 - `scripts/assets.py`：網址 → 頁面實際載入的每一張圖（開 WebGL，3D 輪播與懶載入的高解析商品圖原檔也抓得到）＋ index.json（alt、尺寸）＋總覽
 - `scripts/stills.py`：平面圖（活動圖、貼文、限動、橫幅、A6 桌卡）HTML 排版 → 截圖；出框／壓字檢查、印刷 PNG／PDF、`sheet` 總覽、`qr` 驗證；做法見 `references/stills.md`
 - `references/easel.md`：Easel 技能庫索引：值得用的腳本與用法、花錢與發文的禁區、簡轉繁規則
