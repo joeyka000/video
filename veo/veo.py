@@ -8,7 +8,8 @@
      任何付費步驟都要先通知使用者並取得這一筆的明確同意，才可以加 --yes（不論金額多小）。
   5. 每次實際花費記在 out/spend.jsonl，`python veo.py spend` 看累計。
 
-金鑰：讀環境變數 GEMINI_API_KEY（在雲端環境設定裡加，不要貼在對話裡）。
+金鑰：環境變數 GEMINI_API_KEY，或雲端環境的 Network secret（主機 generativelanguage.googleapis.com、標頭 x-goog-api-key，代理自動帶上）；不要貼在對話裡。
+分鏡 json 可加 "ref_prompt"（參考圖怎麼用；預設是「照片裡的人當主角」，風景、夜景重繪要改掉）與 "frame_suffix"（預設寫實劇照）。
   python veo.py models                                   列出可用模型（免費）
   python veo.py keyframe shots.json [id ...] [--pro] [--redo] --yes
   python veo.py gen shots.json [id ...] [--tier lite|fast|standard] [--res 720p|1080p] [--seconds 4|6|8] [--final] --yes
@@ -40,10 +41,9 @@ IMAGE = {'flash': ('gemini-3.1-flash-image', 0.067), 'pro': ('gemini-3-pro-image
 
 
 def key():
-    k = os.environ.get('GEMINI_API_KEY')
-    if not k:
-        sys.exit('沒有 GEMINI_API_KEY：請在雲端環境設定加入這個環境變數，開新 session 後再執行。')
-    return k
+    """環境變數 GEMINI_API_KEY；沒有時送佔位字串，讓雲端環境的 Network secret（主機 generativelanguage.googleapis.com、
+    標頭 x-goog-api-key）由代理換成真的金鑰。兩者都沒有時 API 回 401／403，不會花到錢。"""
+    return os.environ.get('GEMINI_API_KEY') or 'proxy-injected'
 
 
 def call(method, url, body=None, timeout=120):
@@ -107,8 +107,9 @@ def keyframe(a):
     for s in todo:
         img = base64.b64encode(open(os.path.join(os.path.dirname(os.path.abspath(a.shots)), s['ref']), 'rb').read()).decode()
         body = {'contents': [{'parts': [{'inline_data': {'mime_type': 'image/jpeg', 'data': img}},
-                                        {'text': 'Use the person in this photo as the character and keep their face recognizable. '
-                                         + spec['character'] + ' ' + s['keyframe'] + ' ' + spec['style'] + ' Vertical 9:16 photorealistic film still.'}]}],
+                                        {'text': spec.get('ref_prompt', 'Use the person in this photo as the character and keep their face recognizable. ')
+                                         + spec['character'] + ' ' + s['keyframe'] + ' ' + spec['style']
+                                         + spec.get('frame_suffix', ' Vertical 9:16 photorealistic film still.')}]}],
                 'generationConfig': {'responseModalities': ['IMAGE'], 'imageConfig': {'aspectRatio': '9:16'}}}
         r = call('POST', f'{API}/models/{model}:generateContent', body, 300)
         parts = r['candidates'][0]['content']['parts']
