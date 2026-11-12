@@ -526,3 +526,42 @@ def to_u8(c, dither=True):
 def hexrgb(s):
     s = s.lstrip('#')
     return np.float32([int(s[i:i + 2], 16) for i in (0, 2, 4)]) / 255
+
+
+# ───────── 底片相機日期戳（釜山情侶片）─────────
+_SEG7 = {'0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc', '5': 'afgcd', '6': 'afgedc', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg'}
+
+
+@functools.lru_cache(maxsize=64)
+def date_stamp(text, h=40, col=(1.0, 0.52, 0.16)):
+    """底片相機（写ルンです）的橘色日期戳：斜體七段數字＋微暈，回傳 RGBA float32。
+    text 例："'26 11 06"、"'26 11 01 - 11 11"；支援數字、撇號、減號、空白。日期要讀照片自己的 EXIF，不要編。"""
+    S = 4
+    dh = h * S
+    dw, th = int(dh * 0.52), max(2, int(dh * 0.13))
+    gap = int(dw * 0.42)
+    xs, x = [], 0
+    for ch in text:
+        xs.append(x)
+        x += (dw + gap) if ch.isdigit() or ch == '-' else (int(dw * 0.35) + gap if ch == "'" else int(dw * 0.95))
+    can = np.zeros((dh + 8 * S, x + dh // 3 + 8 * S), np.float32)
+    o = 4 * S
+    for ch, x0 in zip(text, xs):
+        x0 += o
+        y0 = o
+        if ch == "'":
+            cv2.line(can, (x0 + dw // 6, y0), (x0 + dw // 10, y0 + dh // 5), 1.0, th)
+        elif ch == '-':
+            cv2.line(can, (x0 + th, y0 + dh // 2), (x0 + dw - th, y0 + dh // 2), 1.0, th)
+        elif ch.isdigit():
+            P = {'a': ((x0 + th, y0), (x0 + dw - th, y0)), 'g': ((x0 + th, y0 + dh // 2), (x0 + dw - th, y0 + dh // 2)),
+                 'd': ((x0 + th, y0 + dh), (x0 + dw - th, y0 + dh)), 'f': ((x0, y0 + th), (x0, y0 + dh // 2 - th)),
+                 'b': ((x0 + dw, y0 + th), (x0 + dw, y0 + dh // 2 - th)), 'e': ((x0, y0 + dh // 2 + th), (x0, y0 + dh - th)),
+                 'c': ((x0 + dw, y0 + dh // 2 + th), (x0 + dw, y0 + dh - th))}
+            for sg in _SEG7[ch]:
+                cv2.line(can, P[sg][0], P[sg][1], 1.0, th)
+    can = cv2.warpAffine(can, np.float32([[1, -0.12, dh * 0.12], [0, 1, 0]]), (can.shape[1], can.shape[0]))
+    can = cv2.resize(can, (can.shape[1] // S, can.shape[0] // S), interpolation=cv2.INTER_AREA)
+    a = np.clip(can * 0.92 + cv2.GaussianBlur(can, (0, 0), h * 0.10) * 0.55, 0, 1)
+    rgb = np.float32(col) * (0.85 + 0.15 * can[..., None]) + np.float32([0, 0.25, 0.2]) * can[..., None] ** 3
+    return np.dstack([np.clip(rgb, 0, 1), a]).astype(np.float32)
