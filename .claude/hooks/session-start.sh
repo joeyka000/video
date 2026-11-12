@@ -103,7 +103,7 @@ else
     && git -C "$LAB/refs/easel" sparse-checkout set skills docs; } >>"$LOG" 2>&1 || warnings+=("easel clone 失敗")
 fi
 
-# 模型與字型（matte.py 的去背 ISNet、精修用的 YuNet 臉部偵測、Klee One 手寫感日文字型；都只下載一次）
+# 模型與字型（matte.py 的去背 ISNet、精修用的 YuNet 臉部偵測、Klee One 手寫感日文字型、迷幻 MV 的日文粗體；都只下載一次）
 fetch() {
   local out="$1"; shift
   [ -s "$out" ] && return 0
@@ -117,6 +117,10 @@ fetch "$LAB/models/yunet.onnx" \
   https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx
 for f in KleeOne-Regular KleeOne-SemiBold; do
   fetch "$HOME/.fonts/$f.ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/kleeone/$f.ttf"
+done
+# 迷幻卡點 MV 的背景日文大字（psyfx.FONTS；OFL）
+for f in delagothicone/DelaGothicOne-Regular rocknrollone/RocknRollOne-Regular rampartone/RampartOne-Regular; do
+  fetch "$HOME/.fonts/$(basename $f).ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/$f.ttf"
 done
 
 if [ ${#warnings[@]} -eq 0 ]; then

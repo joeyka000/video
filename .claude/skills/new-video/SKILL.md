@@ -36,6 +36,7 @@ effort: xhigh
 - 讀 `VL/references/masters.md`〈零〉的使用者回饋與〈六〉選擇器，挑一個主語言
 - 鏡頭表：起訖秒（段落邊界落在小節上：100 BPM 一小節 2.4 秒）、功能、景別、素材與入點、字卡內容（真實文案）、特效（每個特效寫理由）。同一主體連續兩刀景別差兩級或換角度；入點用 `python VL/scripts/flow.py pick <素材> --from --to --dur [--clean bottom]` 挑
 - 對照 `VL/references/review.md`〈禁用清單〉，有就換掉
+- **複雜度底線**（`VL/references/dance-mv.md`〈零〉）：plan.md 寫出四層各自的時間規則、結構從歌剪出來、至少六種手法各寫「只用在哪裡」、主體景別變化、一段可重跑的 brief；少一項就還沒到使用者要的程度
 - 有實拍素材：`python VL/scripts/look.py board <5–8 格代表素材> --moods clean,soft,day,golden,aot -o projects/<案名>/qa/look_board.jpg`，挑一個 mood 寫進 plan.md（刪掉格頭有紅字的；挑法見 `VL/references/finish.md`〈二〉〈三〉），look board 跟著概念一起給使用者看
 
 ## 3. 寫 seek(t) 引擎

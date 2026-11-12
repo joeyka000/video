@@ -446,7 +446,11 @@ def main():
     if a.bpm:
         bpm0 = a.bpm
     else:
-        bpm0 = float(librosa.feature.tempo(onset_envelope=o_mix, sr=OSR, hop_length=OHOP, start_bpm=120)[0])
+        # 粗估 tempo 用降 8 倍的 onset（每 8 格取最大，43 fps）：全解析度的 tempogram 是 8 秒窗×每格，
+        # 9 分鐘的歌要 20 GB 以上記憶體（3 分鐘 8 GB）；拍格之後由 fit_grid 在 ±7% 內精修，粗估只要落在對的八度
+        k = 8
+        o8 = o_mix[: len(o_mix) // k * k].reshape(-1, k).max(1)
+        bpm0 = float(librosa.feature.tempo(onset_envelope=o8, sr=OSR, hop_length=OHOP * k, start_bpm=120)[0])
         while bpm0 < 60:
             bpm0 *= 2
         while bpm0 >= 200:
