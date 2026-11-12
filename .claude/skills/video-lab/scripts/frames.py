@@ -144,8 +144,17 @@ def _zones(spec, t0, fps):
     return '/'.join(out)
 
 
+def probe_fps(path):
+    r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', path],
+                       capture_output=True, text=True).stdout.strip().split(',')[0]
+    n, d = (r.split('/') + ['1'])[:2]
+    return float(n) / float(d)
+
+
 def cmd_deliver(a):
     full = probe_dur(a.master)
+    if not a.fps:                                  # 母帶影格率自己量。原本預設 24：30 fps 的母帶分段壓（--from/--to）時 -frames:v 少算，
+        a.fps = probe_fps(a.master)                # 每段只有八成長、印出來的秒數卻是預期值（釜山手帳的上下集各少 20%，傳檔前量長度才發現）
     t0 = a.t_from or 0.0
     to_end = not a.t_to or a.t_to >= full - 0.05      # 壓到片尾就不要下 -t：兩段的格數會差一格，x265 第二段報 CU-tree stats 不完整
     dur = (full if to_end else a.t_to) - t0
@@ -173,7 +182,10 @@ def cmd_deliver(a):
     subprocess.run(base + ['-x265-params', f'pass=2:stats={log}:{xp}', '-c:a', 'aac', '-b:a', '192k',
                            '-movflags', '+faststart', a.out], check=True)
     mb = os.path.getsize(a.out) / 1024 / 1024
-    print(f'{a.out}  {mb:.1f} MiB  影像 {vk} kbps  {dur:.1f} 秒')
+    got = probe_dur(a.out)
+    print(f'{a.out}  {mb:.1f} MiB  影像 {vk} kbps  {got:.1f} 秒')
+    if abs(got - dur) > 0.15:                      # 印的是量到的長度，不是預期值；對不上就報錯
+        sys.exit(f'長度不對：預期 {dur:.2f} 秒、實際 {got:.2f} 秒（母帶 {a.fps:g} fps）')
     if mb > a.max_mb:
         sys.exit('超過上限：把 --max-mb 調小再跑一次')
 
@@ -214,7 +226,7 @@ def main():
     s.add_argument('--cap-kbps', type=int, default=12000, help='短片不必塞滿上限')
     s.add_argument('--grain', type=int, default=0, help='壓檔前加動態顆粒（0–255 尺度的振幅；3 = 很淡）')
     s.add_argument('--zones', default='', help='暗場加碼：「起-迄:倍率,…」（秒，母帶時間），例 7.2-12:3,73.8-75.7:2.5；照 finish.py 的色階欄挑 > 20 px 的鏡頭')
-    s.add_argument('--fps', type=float, default=24, help='母帶影格率（換算 zones 的格號）')
+    s.add_argument('--fps', type=float, default=None, help='母帶影格率（換算 zones 與分段的格號；預設用 ffprobe 量）')
     s.add_argument('--from', dest='t_from', type=float, default=None, help='只壓一段（分段交付高畫質版）')
     s.add_argument('--to', dest='t_to', type=float, default=None)
     a = p.parse_args()
