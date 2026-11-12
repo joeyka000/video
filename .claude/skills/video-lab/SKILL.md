@@ -21,6 +21,7 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 ## 技能內檔案地圖
 路徑相對於 `.claude/skills/video-lab/`（`python scripts/analyze.py` 就是 `python .claude/skills/video-lab/scripts/analyze.py`）；`data/`、`out/`、`media/` 相對於 repo 根目錄，指令在那裡執行。
 - `references/dance-mv.md`：**複雜度底線**（〈零〉，所有新片都照：四層各有時間規則、結構從歌長出來、六種手法各寫只用在哪裡、主體景別變化、一鍵指令、自動檢查、交付回報）＋迷幻風卡點跳舞 MV 配方（素材規格、Dreamina／Veo／免費律動三條生成路、剪輯節奏、特效分寸、一鍵指令範本、實測教訓）
+- `references/scrapbook.md`：可愛手帳風旅行片配方（一個景點一頁：EXIF 分頁、去重挑片、排版本、真實地圖跳點、拍立得、連拍、滿版、九宮格、拼貼＋張數；可愛的分寸；數字都要是真的）
 - `references/mv-direction.md`：MV／藝術影片的思考順序（brief → 聽歌拆結構 → 概念 → 母題 → treatment → 分鏡 → 素材 → 剪輯 → 自檢），每步的產出物與確認點；三種型態、概念方法、藝術影片骨架、密度與歌詞模式、分鏡表規格與動態分鏡
 - `references/editing.md`：音樂驅動的剪輯文法（剪在哪裡、密度表、標點符號原則、對嘴對時）、14 招各附 `MV.timeline` 寫法與實測 ffmpeg 配方、剪點表工作流程、剪輯自檢
 - `references/craft.md`：色彩與調色、字型排印（可用字型、字級、安全區、字幕規格、kerning、網格）、動態與緩動、動態模糊取樣、聲畫對位、輸出規格與 ffprobe 核對、視覺自檢
@@ -40,8 +41,10 @@ description: 日常剪片、程式動畫與 MV／藝術影片工作臺。剪片�
 - `scripts/songcut.py`：歌剪成指定秒數（前奏／主歌／副歌／原曲結尾，剪點在小節線、等功率接）＋剪後時間軸 json；逐段相位校正、拍格鎖到鼓的攻擊點（現場錄音的長歌拍格會漂）
 - `scripts/keyloop.py`：舞蹈角色前後處理：`plate` 立繪去背去地面陰影 → 9:16 綠幕／藍幕首尾幀；`key` 生成的跳舞影片摳像 → RGBA 循環＋舞步節拍＋循環接點檢查；`matte` 實拍影片逐格去背 → 固定在原地的來回循環＋每拍的落點格；`burst` 連拍照片 → 每拍換一個姿勢；`marks` 重算落拍格；`synth` 免費律動綠幕測試片
 - `scripts/psyfx.py`：迷幻卡點零件（拍格 `Grid`、彩虹同心圓／旋轉色環／融化彩虹／條紋／棋盤、照片色相流轉＋扭曲、萬花筒、撕裂＋RGB、閃白、綠幕摳像、貼紙描邊、`place` 腳底定位貼角色、`Dancer` 生成舞蹈循環或免費律動、並排與五連排變色、日文大字、推鏡、滑動交叉）；`psyfx.py demo` 出對照表
+- `scripts/cutefx.py`：可愛手帳零件（粉彩紙底六種花紋、拍立得卡、圓角相片磚、依臉裁切、字貼紙自動分中韓字型、彩色 emoji 貼紙、紙膠帶標籤、對話框、圓章、愛心圖釘、`paste` 貼圖、`pop` 彈出、花邊換頁）；`cutefx.py demo`
 - `scripts/beatqa.py`：卡點片檢查：閃白／亮度突升是否落在小節線、混音位移、畫面打點對拍格
 - `templates/music_dance.py`：原創舞曲（future funk，128 BPM、48 小節＝90 秒：前奏／主歌／副歌／主歌／副歌／結尾）＋精確拍格 json；各軌音量、頻段、響度（−14 LUFS）用量的
+- `templates/music_kawaii.py`：可愛風原創配樂（音樂盒主旋律、彈跳貝斯、拍手、晶片琶音；128 BPM、96 小節＝180 秒；最後一次副歌升 key）＋精確拍格 json
 - `templates/dance_mv.py`：迷幻風卡點跳舞 MV 引擎範本（16:9，換人、取景、副歌陣型、每小節換背景、留白的特效全寫成規則；SHOTS 每小節一刀）
 - `scripts/align.py`：歌詞文字 → `data/lyrics.json` 逐字時間碼（faster-whisper，或 `--from-json` 吃現成時間碼）
 - `scripts/render.py`：HTML `render(t)` → mp4／透明 mov／webm、預覽拼圖、剪點拼圖、子格動態模糊、4K

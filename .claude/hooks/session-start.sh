@@ -118,6 +118,11 @@ fetch "$LAB/models/yunet.onnx" \
 for f in KleeOne-Regular KleeOne-SemiBold; do
   fetch "$HOME/.fonts/$f.ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/kleeone/$f.ttf"
 done
+# 可愛手帳風（cutefx.FONT；OFL）：粉圓體（繁中）、Jua 與 Gaegu（韓文、手寫）、Mochiy Pop One
+fetch "$HOME/.fonts/jf-openhuninn.ttf" https://raw.githubusercontent.com/justfont/open-huninn-font/master/font/jf-openhuninn-2.1.ttf
+for f in jua/Jua-Regular gaegu/Gaegu-Bold mochiypopone/MochiyPopOne-Regular; do
+  fetch "$HOME/.fonts/$(basename $f).ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/$f.ttf"
+done
 # 迷幻卡點 MV 的背景日文大字（psyfx.FONTS；OFL）
 for f in delagothicone/DelaGothicOne-Regular rocknrollone/RocknRollOne-Regular rampartone/RampartOne-Regular; do
   fetch "$HOME/.fonts/$(basename $f).ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/$f.ttf"
