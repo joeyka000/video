@@ -103,6 +103,22 @@ else
     && git -C "$LAB/refs/easel" sparse-checkout set skills docs; } >>"$LOG" 2>&1 || warnings+=("easel clone 失敗")
 fi
 
+# 模型與字型（matte.py 的去背 ISNet、精修用的 YuNet 臉部偵測、Klee One 手寫感日文字型；都只下載一次）
+fetch() {
+  local out="$1"; shift
+  [ -s "$out" ] && return 0
+  mkdir -p "$(dirname "$out")"
+  for u in "$@"; do curl -sSfL -o "$out.part" "$u" >>"$LOG" 2>&1 && mv -f "$out.part" "$out" && return 0; done
+  rm -f "$out.part"; warnings+=("$(basename "$out") 下載失敗")
+}
+fetch "$LAB/models/isnet.onnx" https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx
+fetch "$LAB/models/yunet.onnx" \
+  https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx \
+  https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx
+for f in KleeOne-Regular KleeOne-SemiBold; do
+  fetch "$HOME/.fonts/$f.ttf" "https://raw.githubusercontent.com/google/fonts/main/ofl/kleeone/$f.ttf"
+done
+
 if [ ${#warnings[@]} -eq 0 ]; then
   echo "video-lab 環境就緒（紀錄：$LOG）"
 else

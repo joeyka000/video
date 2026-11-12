@@ -10,6 +10,7 @@
   c = TX.light_band(a, b, u, angle=0.35)    # 一道光帶掃過，光後面換鏡頭（白天／日落之間）
   c = TX.whip(a, b, u, 'left')              # 甩鏡：方向性動態模糊，中點交換
   c = TX.zoom_through(a, b, u, cx, cy)      # 往 a 的一點衝進去、從 b 的中心退出來（放射模糊）
+  c = TX.spin(a, b, u)                      # 轉半圈換場（下一張本身是倒的：倒過來的自拍）
   c = TX.iris(a, b, u, cx, cy)              # 從物件位置開的圓：金色細邊（match cut 的強化版）
   c = TX.encounter(a, b, u)                 # 遊戲遇敵：白閃三下＋橫條交錯滑開（寶可夢題材專用，一支片一次）
   python transfx.py demo -o /tmp/tx.jpg
@@ -329,6 +330,24 @@ def zoom_through(a, b, u, cx=None, cy=None, zmax=3.2, flash=0.6):
         img = _rblur(img, w / 2, h / 2, 0.22 * v)
     fk = flash * math.exp(-((u - 0.5) / 0.09) ** 2)
     return _screen(img, np.full_like(img, fk) * np.float32((1.0, 0.96, 0.88))).astype(np.float32)
+
+
+# ───────── 旋轉 ─────────
+def spin(a, b, u, turns=0.5, zoom=0.35, n=5):
+    """整個畫面轉半圈換場（帶旋轉方向的動態模糊）：用在下一張本身是倒的、斜的（倒過來的自拍、躺著拍）。"""
+    h, w = a.shape[:2]
+    deg = 360 * turns
+    if u < 0.5:
+        v = (lambda x: x * x * (3 - 2 * x))(min(max(u / 0.5, 0), 1)) ** 1.6
+        img, ang, s = a, deg * v, 1 + zoom * v
+    else:
+        v = 1 - (lambda x: x * x * (3 - 2 * x))(min(max((u - 0.5) / 0.5, 0), 1))
+        img, ang, s = b, -deg * v ** 1.6, 1 + zoom * v
+    acc = np.zeros_like(img)
+    for j in range(n):
+        A = cv2.getRotationMatrix2D((w / 2, h / 2), ang - (j - (n - 1) / 2) * 9 * v, s)
+        acc += cv2.warpAffine(img, A, (w, h), borderMode=cv2.BORDER_REFLECT)
+    return (acc / n).astype(np.float32)
 
 
 # ───────── 圓 ─────────
