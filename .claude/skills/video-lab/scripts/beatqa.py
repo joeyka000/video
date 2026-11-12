@@ -8,7 +8,8 @@
   1. 閃白／亮度突升：逐格平均亮度（160×90 灰階），這一格比前兩格的較小值亮 ≥ --faint（0–255）就算一次；
      ≥ --strong 是「強閃」。每一次找最近的小節線與拍點，差幾格：
        強閃必須在小節線 ±1 格（規則：閃白只在小節線上，換人時稍強）；淡閃在小節線或拍點 ±1 格
-     換背景的硬切也會被算成亮度突升（設計上也在小節線上，所以一起檢查）
+     換背景的硬切也會被算成亮度突升（設計上也在小節線上，所以一起檢查）；變亮像素 < 35% 的是畫面內動作（特寫時
+     高反差背景跟著晃），列出來但不算（實測閃白、硬切 ≥ 0.48，動作 0.13）
   2. 聲音：給 --song（剪好的歌）時，成片音軌對歌本身做 onset 互相關 → 混音位移（ffmpeg 合音軌錯位、剪歌後換錯檔都會露出來），
      這一項才是判定；另外列「歌本身對拍格」與「成片音軌對拍格」的位移當參考：現場鼓、人聲很多的歌，常數拍格本來就會
      差幾十毫秒（Sparkle 實測 +65 ms），那是 analyze.py 的拍格問題，不是成片不同步
@@ -39,7 +40,13 @@ def video_curves(path, w=160, h=90):
     L = f.mean((1, 2))
     D = np.zeros(len(f), np.float32)
     D[1:] = np.abs(f[1:] - f[:-1]).mean((1, 2))
-    return L, D
+    return L, D, f
+
+
+def brighter_frac(f, k):
+    """第 k 格比前兩格中較暗那格亮 ≥ 4 階的像素比例：閃白、硬切 ≥ 0.48（實測），畫面內動作（特寫時高反差背景跟著晃）約 0.13。"""
+    prev = f[k - 1] if k < 2 or f[k - 1].mean() < f[k - 2].mean() else f[k - 2]
+    return float(((f[k] - prev) > 4).mean())
 
 
 def audio_onset(path, sr=22050, hop=128):
@@ -92,25 +99,32 @@ def main():
     db = np.array(J['downbeats']) - a.offset
     beats = np.array(J['beats']) - a.offset
     fps = probe(a.video)
-    L, D = video_curves(a.video)
+    L, D, FR = video_curves(a.video)
     n = len(L)
     # 1. 亮度突升
     prev = np.minimum(np.r_[L[0], L[:-1]], np.r_[L[0], L[0], L[:-2]])
     rise = L - prev
     ev = []
+    motion = []
     f = 1
     while f < n:
         if rise[f] >= a.faint:
             g = f
             while g + 1 < n and rise[g + 1] >= a.faint:      # 連續幾格算同一次，取最大那格
                 g += 1
-            k = f + int(np.argmax(rise[f:g + 1]))
+            k = f                                            # 事件從第一格算（硬切之後角色再彈亮一格時，最大值那格會晚 1 格）
+            kmax = f + int(np.argmax(rise[f:g + 1]))
             t = k / fps
+            frac = brighter_frac(FR, kmax)
+            if frac < 0.35:                                  # 只有局部變亮：畫面內的動作，不是閃白或硬切
+                motion.append(dict(t=round(t, 3), rise=round(float(rise[kmax]), 1), frac=round(frac, 2)))
+                f = g + 1
+                continue
             dbar = (t - db[np.argmin(np.abs(db - t))]) * fps
             dbeat = (t - beats[np.argmin(np.abs(beats - t))]) * fps
-            strong = rise[k] >= a.strong
+            strong = rise[kmax] >= a.strong
             ok = abs(dbar) <= 1.01 if strong else (abs(dbar) <= 1.01 or abs(dbeat) <= 1.01)
-            ev.append(dict(t=round(t, 3), frame=k, rise=round(float(rise[k]), 1), strong=bool(strong), d_bar=round(float(dbar), 2),
+            ev.append(dict(t=round(t, 3), frame=k, rise=round(float(rise[kmax]), 1), strong=bool(strong), d_bar=round(float(dbar), 2),
                            d_beat=round(float(dbeat), 2), ok=bool(ok)))
             f = g + 1
         else:
@@ -142,7 +156,8 @@ def main():
     os.makedirs(a.o, exist_ok=True)
     lines = [f'# 卡點檢查：{os.path.basename(a.video)}', '',
              f'- 影片 {n} 格、{fps:g} fps、{n / fps:.2f} 秒；拍格 {J.get("tempo", 0):.2f} BPM、{len(db)} 條小節線',
-             f'- 亮度突升 {len(ev)} 次（強閃 ≥ {a.strong:g}：{len(strong)} 次，落在小節線 ±1 格 {on_bar}/{len(strong)}）；不合格 {len(bad)} 次',
+             f'- 亮度突升 {len(ev)} 次（強閃 ≥ {a.strong:g}：{len(strong)} 次，落在小節線 ±1 格 {on_bar}/{len(strong)}）；不合格 {len(bad)} 次'
+             f'；另有 {len(motion)} 次只是局部變亮（畫面內動作，變亮像素 < 35%，不算）',
              (f'- 混音位移（成片音軌 vs 歌）：{mux * 1000:+.0f} ms；參考：歌本身對拍格 {s_lag * 1000:+.0f} ms、成片音軌對拍格 {a_lag * 1000:+.0f} ms'
                '（onset 強度峰值本來就比鼓的攻擊點晚 30–50 ms，拍格鎖在鼓上時這裡約 +30～+60 是正常的）'
               if mux is not None else

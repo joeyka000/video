@@ -212,12 +212,19 @@ def framing(i, t):
     else:
         z, fx, fy = half
     # 每隔一位：最後兩拍接眼睛特寫（拍頭硬切，是剪接不是推鏡）；焦點在 char_layer 依此刻的眼睛位置算
-    if p['solo'] is not None and p['solo'] % 2 == 1 and k == nb - 1 and u >= 0.5 and nb >= 2:
+    if p['solo'] is not None and p['solo'] % 2 == 1 and k == nb - 1 and nb >= 2 and t >= beat_in_bar(i, 2):
         return EYE_Z, None, None
     return z, fx, fy
 
 
 SOLO_H, SOLO_FOOT = H * 0.86, H * 0.975
+
+
+def beat_in_bar(i, k):
+    """小節 i 的第 k 拍（0 起）的實際時間：拍格鎖到鼓之後每小節長度略有不同，用「半小節」會差 1 格以上。"""
+    t0, t1 = G.bar_time(i), G.bar_time(i + 1)
+    bb = G.beats[(G.beats >= t0 - 1e-3) & (G.beats < t1 - 1e-3)]
+    return float(bb[k]) if len(bb) > k else t0 + k / G.meter * (t1 - t0)
 EYE_Z = 3.6
 
 
@@ -352,7 +359,7 @@ def _shots():
         p = PLAN[i]
         cuts = [a]
         if p['mode'] == 'solo' and framing(i, G.bar_time(i) + 0.75 * G.barlen)[1] is None:
-            cuts.append(G.bar_time(i) + 0.5 * G.barlen)  # 眼睛特寫在小節中間硬切
+            cuts.append(beat_in_bar(i, 2))               # 眼睛特寫在第三拍硬切
         cuts.append(b)
         for x, y in zip(cuts, cuts[1:]):
             if y > x:
