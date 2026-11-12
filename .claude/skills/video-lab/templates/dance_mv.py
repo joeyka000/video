@@ -8,12 +8,14 @@
   結構   歌先用 songcut.py 剪好（前奏／主歌／副歌／結尾，剪點在小節線），這裡吃剪後的 json；一切時間都從小節線算
   換人   每位角色停留 SEG_BARS（4）小節，換人落在小節線上：角色圖層「滑動＋交叉淡化」（小節線前後各 XFADE 拍），不硬切
   取景   同一位角色中間換一次取景：前兩小節全身 → 第三小節推到半身（平順推鏡）；每隔一位，最後兩拍接眼睛特寫
-  副歌   開頭與結尾全員並排；中間穿插單人、雙人並排、五連排變色；整個畫面（連角色）慢慢轉色相
+  副歌   開頭與結尾全員並排；中間穿插單人、雙人並排、五連排變色；整個畫面慢慢轉色相（真人角色只輕輕擺，保護膚色）
   閃白   只在小節線上：換人 0.30、副歌小節頭 0.18、其他小節 0.09（很淡），約 3 格消退
   背景   每小節換一個：資料夾圖片（色相流轉＋輕微扭曲）與彩虹同心圓、旋轉色環、融化彩虹、條紋、黑白棋盤輪流
   撕裂   畫面撕裂＋RGB 分離只在換人與副歌小節頭出現，下一拍前回到清楚
   萬花筒 前奏最後一小節、副歌每 8 小節的最後一小節、結尾；角色疊在萬花筒上面保持清楚
   大字   角色後面的日文大字：主歌每 2 小節一個、副歌每小節一個（WORDS；None＝不放字）；不是逐句歌詞字幕
+  殘影   副歌單人段，角色後面兩道純色剪影（半拍前、四分之一拍前的自己）；其他段不用
+角色來源三種（psyfx.Dancer）：生成的跳舞循環（keyloop.py key）、實拍去背循環（keyloop.py matte／burst，不花錢）、立繪＋免費律動。
 """
 import glob
 import math
@@ -45,9 +47,13 @@ W, H, FPS = 1280, 720, 30
 SONG_JSON = os.path.join(HERE, 'song90.json')          # songcut.py 的輸出（剪後時間軸）
 AUDIO = os.path.join(HERE, 'song90.wav')
 CHAR_DIR = os.path.join(HERE, 'chars')
-# 角色：(來源, 免費律動風格)。來源＝keyloop.py key 的資料夾（生成的舞，風格不用）或 *_cut.png（免費律動 puppet）
+# 角色：(來源, 免費律動風格)。來源＝keyloop.py key／matte／burst 的資料夾（生成的舞或實拍，風格不用）或 *_cut.png（免費律動 puppet）
+# 順序就是出場順序；實拍影片（連續動作）與連拍（每拍換姿勢）交錯排比較有變化
 CHARS = [(p, s) for p, s in zip(sorted(glob.glob(os.path.join(CHAR_DIR, '*_clip'))) or sorted(glob.glob(os.path.join(CHAR_DIR, '*_cut.png'))),
                                  ('bounce', 'sway', 'hop', 'groove', 'twist', 'robot') * 4)]
+TRACK_HEAD = True       # 單人推到半身時鏡頭跟著頭
+ECHO = True             # 副歌單人段：角色後面兩道純色剪影的殘影（半拍前、四分之一拍前的自己）
+CHAR_HUE = 24.0         # 副歌轉色時角色自己只擺 ±這麼多度。真人設 20–30（膚色不會變綠變紫）；插畫角色可設 None＝跟背景一起整圈轉
 BG_DIR = os.path.join(HERE, 'bg')
 BG_FILES = sorted(glob.glob(os.path.join(BG_DIR, '*.jpg')) + glob.glob(os.path.join(BG_DIR, '*.png')))
 # 背景日文大字：從歌的主題挑關鍵字（例：スパークル的主題字），或用使用者指定的字；None＝不放字。不放逐句歌詞
@@ -113,12 +119,10 @@ def _build():
                     blocks.append((k, k + n, 'solo', [ci % N], solo_n))
                     solo_n += 1
                     ci += 1
-                elif mode == 'duo':
+                elif mode == 'duo':                         # 雙人不佔單人的輪替：每位角色都輪得到單人段
                     blocks.append((k, k + n, 'duo', [ci % N, (ci + 1) % N], None))
-                    ci += 2
-                else:
+                else:                                       # 五連排也不佔輪替（接著輪到的那位先用五連排亮相）
                     blocks.append((k, k + n, 'five', [ci % N] * 5, None))
-                    ci += 1
                 k += n
                 c += 1
             blocks.append((k, j + 1, 'all', list(range(N)), None))
@@ -143,7 +147,7 @@ def _build():
             in_sec = i - G.bar(sec['start'] + 0.02)[0]
             sec_len = round((sec['end'] - sec['start']) / G.barlen)
             kind = BG_ORDER[i % len(BG_ORDER)]
-            if kind == 'pattern' or not BG_FILES:
+            if kind == 'pattern' or not BG_FILES or r == 'outro':    # 結尾全用程式圖樣：暗的照片摺成萬花筒會整片黑
                 bg = ('pattern', PATTERNS[pat_i % len(PATTERNS)])
                 pat_i += 1
             else:
@@ -212,7 +216,8 @@ def framing(i, t):
     else:
         z, fx, fy = half
     # 每隔一位：最後兩拍接眼睛特寫（拍頭硬切，是剪接不是推鏡）；焦點在 char_layer 依此刻的眼睛位置算
-    if p['solo'] is not None and p['solo'] % 2 == 1 and k == nb - 1 and nb >= 2 and t >= beat_in_bar(i, 2):
+    if (p['solo'] is not None and p['solo'] % 2 == 1 and k == nb - 1 and nb >= 2 and t >= beat_in_bar(i, 2)
+            and DANCERS[p['who'][0]].closeup):               # 來源解析度不夠的角色不做特寫
         return EYE_Z, None, None
     return z, fx, fy
 
@@ -225,6 +230,8 @@ def beat_in_bar(i, k):
     t0, t1 = G.bar_time(i), G.bar_time(i + 1)
     bb = G.beats[(G.beats >= t0 - 1e-3) & (G.beats < t1 - 1e-3)]
     return float(bb[k]) if len(bb) > k else t0 + k / G.meter * (t1 - t0)
+
+
 EYE_Z = 3.6
 
 
@@ -234,10 +241,13 @@ def char_layer(i, t):
     lay = np.zeros((H, W, 4), np.float32)
     z, fx, fy = framing(i, t)
     if fx is None:                                       # 眼睛特寫：跟著此刻（含律動）的眼睛位置
-        d = DANCERS[p['who'][0]]
-        rgba, mv = d.at(t, G)
-        ex, ey = d.eye_xy(rgba, mv, 0.5 * W, SOLO_FOOT, SOLO_H)
+        ex, ey = DANCERS[p['who'][0]].eye_xy(t, G, 0.5 * W, SOLO_FOOT, SOLO_H)
         fx, fy = ex / W, ey / H
+    elif p['mode'] == 'solo' and z > 1.001 and TRACK_HEAD:  # 半身：鏡頭跟著頭走（轉圈、歪頭、彎腰時臉不會跑出畫面）
+        ex, ey = DANCERS[p['who'][0]].eye_xy(t, G, 0.5 * W, SOLO_FOOT, SOLO_H)
+        k = min(1.0, (z - 1) / 0.75)
+        fx = fx + (ex / W - 0.5) * k
+        fy = fy + ((ey + 0.20 * SOLO_H) / H - 0.36) * k
     cam = lambda x, y: (W / 2 + (x - fx * W) * z, H / 2 + (y - fy * H) * z)   # noqa: E731
     hues = None
     if p['mode'] == 'solo':
@@ -250,15 +260,23 @@ def char_layer(i, t):
     else:
         n = len(p['who'])
         slots = [((k + 0.5) / n * 0.92 + 0.04, H * 0.97, H * (0.66 if n <= 4 else 0.58)) for k in range(n)]
+    solo = p['mode'] == 'solo'
+    if ECHO and solo and p['role'] == 'chorus' and z < EYE_Z:   # 殘影：只在副歌單人段，畫在本尊後面
+        d = DANCERS[p['who'][0]]
+        for back, op, grow, hue in ((0.5, 0.45, 1.07, 0.5), (0.25, 0.7, 1.035, 0.0)):
+            rgba, mv = d.at(t - back * BEAT, G, small=True)      # 半拍前、四分之一拍前的自己，填成純色剪影
+            x, y = cam(0.5 * W, SOLO_FOOT)
+            col = PX.hue_rgb(np.float32((hue + t * 0.11) % 1.0), 0.75, 1.0)
+            PX.put_dancer(lay, PX.silhouette(rgba, col), mv, x, y, SOLO_H * z * grow, op=op)
     for k, (who, (sx, foot, hh)) in enumerate(zip(p['who'], slots)):
-        rgba, mv = DANCERS[who].at(t, G)                 # 全員都踩同一個拍（不錯開，錯開就不卡點）
+        rgba, mv = DANCERS[who].at(t, G, small=not solo)  # 全員都踩同一個拍（不錯開，錯開就不卡點）
         if hues:                                         # 五連排：先縮到要用的大小再轉色相（全尺寸轉色太慢）
-            f = hh * z * 1.2 / rgba.shape[0]
+            f = hh * z * mv.get('hscale', 1.0) * 1.2 / rgba.shape[0]
             if f < 1:
                 rgba = _small(rgba, f)
             rgba = PX.hue_shift(rgba, hues[k])
-        x, y = cam(sx * W, foot - mv['dy'] * hh)
-        PX.place(lay, rgba, x, y, hh * z, angle=mv['angle'], sx=mv['sx'], sy=mv['sy'], shear=mv['shear'])
+        x, y = cam(sx * W, foot)
+        PX.put_dancer(lay, rgba, mv, x, y, hh * z)
     return lay, z
 
 
@@ -306,12 +324,17 @@ def frame(t):
         T = G.bar_time(i)
         e = (t - (T - XFADE * BEAT)) / (2 * XFADE * BEAT)
         lay = _slide(char_layer(prv, t)[0], lay, e)
-    c = PX.over_layer(c, lay)
     p = P(i)
-    # 副歌：整個畫面連角色一起慢慢轉色相
+    # 副歌：整個畫面慢慢轉色相。插畫角色跟著整圈轉；真人只輕輕擺（CHAR_HUE），不然臉會變綠變紫
     if p['role'] == 'chorus':
         sec = G.section(t)
-        c = PX.hue_shift(c, (t - sec['start']) * 22.0)
+        th = (t - sec['start']) * 22.0
+        if CHAR_HUE is None:
+            c = PX.hue_shift(PX.over_layer(c, lay), th)
+        else:
+            c = PX.over_layer(PX.hue_shift(c, th), PX.hue_shift(lay, CHAR_HUE * math.sin(2 * math.pi * (t - sec['start']) / (4 * G.barlen))))
+    else:
+        c = PX.over_layer(c, lay)
     # 閃白：只在小節線上
     dt = t - t0
     k = FLASH['change'] if p['change'] else FLASH['chorus'] if p['chorus_head'] else FLASH['bar']

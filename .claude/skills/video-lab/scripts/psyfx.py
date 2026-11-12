@@ -310,6 +310,14 @@ def flash(c, k, col=(1.0, 1.0, 1.0)):
     return 1 - (1 - c) * (1 - lay)
 
 
+def silhouette(rgba, col):
+    """角色的純色剪影（同形狀、整片填 col）：殘影用。"""
+    out = np.empty_like(rgba)
+    out[..., :3] = np.float32(col)
+    out[..., 3] = rgba[..., 3]
+    return out
+
+
 def over(c, rgba, op=1.0):
     a = rgba[..., 3:4] * op
     return c * (1 - a) + rgba[..., :3] * a
@@ -418,7 +426,7 @@ def _premul(rgba, f):
     pm = np.dstack([rgba[..., :3] * rgba[..., 3:4], rgba[..., 3]])
     if f > 1:
         pm = cv2.resize(pm, (max(1, rgba.shape[1] // f), max(1, rgba.shape[0] // f)), interpolation=cv2.INTER_AREA)
-    if len(_PM) > 256:
+    while len(_PM) >= 24:                                  # 每筆含原圖＋預乘版（全尺寸角色一筆約 40 MB）：256 筆時 4 個渲染行程吃光 16 GB
         _PM.pop(next(iter(_PM)))
     _PM[key] = (rgba, pm)
     return pm
@@ -431,12 +439,13 @@ def over_layer(c, layer, op=1.0):
 
 
 class Dancer:
-    """一位角色。兩種來源：
-       clip：keyloop.py key 產出的資料夾（f0000.png… RGBA＋clip.json：fps、n、period 每拍幾格、phase 第一個拍點的格）
-             → at(t, grid) 依歌的拍位置取格：循環裡剛好塞整數拍，動作的落點對齊歌的拍子（跳舞跟拍點同步）
-       still：一張去背立繪（RGBA png）＋ style 免費律動（puppet）：bounce／sway／hop／groove／twist／robot。
-             這是試片與不花點數的版本，品質不能跟生成的舞蹈比，交付時要講清楚。
-    sticker_px：描邊寬（以角色原圖高度的比例，0.012 ≈ 1.2%）。"""
+    """一位角色。來源三種：
+       clip（生成的舞）：keyloop.py key 的資料夾（clip.json：period 每拍幾格、phase 落拍格）→ 循環伸縮成整數拍、落拍格對齊拍點
+       clip（實拍）：keyloop.py matte／burst 的資料夾（已含貼紙描邊、大小兩種尺寸、每格眼睛位置）
+             mode "boomerang"：來回播，一趟 beats 拍；marks（keyloop.py marks）把「姿勢停住的格」對到每一拍，拍上有落點
+             mode "poses"：每 step 拍換一張，換的那一下壓一下再彈起來
+       still：一張去背立繪（RGBA png）＋ style 免費律動（puppet）：bounce／sway／hop／groove／twist／robot（試片用）
+    at(t, grid, small) → (RGBA, 貼圖參數)；貼圖參數交給 put_dancer（含 hscale：畫布高÷身高，anchor：腳底在畫布的位置）。"""
 
     STYLES = ('bounce', 'sway', 'hop', 'groove', 'twist', 'robot')
 
@@ -446,11 +455,20 @@ class Dancer:
         self.style = style
         self.sp = sticker_px
         self.meta = meta or {}
+        self.hscale, self.anchor, self.eyes_list, self.closeup = 1.0, (0.5, 1.0), None, True
         if os.path.isdir(src):
             self.kind = 'clip'
             self.info = json.load(open(os.path.join(src, 'clip.json')))
+            self.mode = self.info.get('mode', 'loop')
+            self.stickered = bool(self.info.get('stickered'))
             self.files = sorted(glob.glob(os.path.join(src, 'f*.png')))
+            self.small = sorted(glob.glob(os.path.join(src, 's*.png')))
             self.n = len(self.files)
+            if self.stickered:
+                self.hscale = self.info['size'][1] / self.info['body_h']
+                self.anchor = tuple(self.info.get('anchor', (0.5, 1.0)))
+                self.eyes_list = self.info.get('eyes')
+                self.closeup = self.info.get('src_h', 9999) >= 600      # 來源身高太小，放大到眼睛特寫會糊
         else:
             self.kind = 'still'
             im = cv2.imread(src, cv2.IMREAD_UNCHANGED)
@@ -482,29 +500,67 @@ class Dancer:
                 return s[: -len(suf)] + '.json'
         return None
 
-    def eye_xy(self, rgba, mv, x, foot_y, height):
-        """此刻（含律動）眼睛在畫面上的位置；沒有眼睛資料時用頭頂下方 13%。"""
-        ex, ey = self.eyes or (0.5, 0.13)
+    def index(self, t, grid):
+        """clip：此刻播第幾格（只由 t 決定）。"""
+        b = grid.bpos(t)
+        n = self.n
+        if self.mode == 'poses':
+            return int(math.floor(b / self.info.get('step', 1.0) + 1e-6)) % n
+        if self.mode == 'boomerang':
+            B = int(self.info.get('beats', 4))
+            marks = self.info.get('marks') or [k * (n - 1) / B for k in range(B + 1)]
+            p = b / B
+            k = math.floor(p)
+            u = (p - k) * B
+            if k % 2:
+                u = B - u
+            j = min(B - 1, int(math.floor(u)))
+            fr = u - j
+            fr = fr + 0.45 * (fr * fr * (3 - 2 * fr) - fr)                # 拍上稍微停一下、拍與拍之間快一點
+            return int(round(marks[j] + (marks[j + 1] - marks[j]) * fr))
+        nl, P, ph = self.info.get('n_loop', n), self.info['period'], self.info.get('phase', 0.0)
+        K = max(1, round(nl / P))                                         # 這段循環塞幾拍
+        return int(math.floor((ph + b * nl / K) % nl)) % n
+
+    def _eye(self, i):
+        if self.eyes_list:
+            for d in range(self.n):
+                for j in (i - d, i + d):
+                    if 0 <= j < self.n and self.eyes_list[j]:
+                        return self.eyes_list[j]
+        return self.eyes or (0.5, 0.13)
+
+    def eye_xy(self, t, grid, x, foot_y, body_h):
+        """此刻（含律動）眼睛在畫面上的位置。"""
+        rgba, mv = self.at(t, grid)
+        ex, ey = self._eye(self.index(t, grid)) if self.kind == 'clip' else (self.eyes or (0.5, 0.13))
         hh, ww = rgba.shape[:2]
-        M = place_matrix(ww, hh, x, foot_y - mv['dy'] * height, height, mv['angle'], mv['sx'], mv['sy'], mv['shear'])
+        M = place_matrix(ww, hh, x, foot_y - mv['dy'] * body_h, body_h * mv['hscale'], mv['angle'], mv['sx'], mv['sy'], mv['shear'], mv['anchor'])
         return M @ np.array([ex * ww, ey * hh, 1.0])
 
-    @functools.lru_cache(maxsize=48)
-    def _frame(self, i):
-        im = cv2.imread(self.files[i], cv2.IMREAD_UNCHANGED)
+    @functools.lru_cache(maxsize=20)
+    def _frame(self, i, small=False):
+        im = cv2.imread((self.small if small and self.small else self.files)[i], cv2.IMREAD_UNCHANGED)
         rgba = cv2.cvtColor(im, cv2.COLOR_BGRA2RGBA).astype(np.float32) / 255
-        return sticker(rgba, px=max(2, int(rgba.shape[0] * self.sp)))
+        return rgba if self.stickered else sticker(rgba, px=max(2, int(rgba.shape[0] * self.sp)))
 
-    def at(self, t, grid):
-        """回傳 (RGBA, 律動參數 dict：dy 往上跳比例、sx、sy、angle、shear)。"""
+    def at(self, t, grid, small=False):
+        """回傳 (RGBA, 貼圖參數 dict：dy 往上跳比例、sx、sy、angle、shear、hscale、anchor)。"""
         b = grid.bpos(t)
+        base = dict(dy=0.0, sx=1.0, sy=1.0, angle=0.0, shear=0.0, hscale=self.hscale, anchor=self.anchor)
         if self.kind == 'clip':
-            n, P, ph = self.info.get('n_loop', self.n), self.info['period'], self.info.get('phase', 0.0)
-            K = max(1, round(n / P))                      # 這段循環塞幾拍
-            f = (ph + b * n / K) % n
-            i0 = int(math.floor(f)) % n
-            return self._frame(i0), dict(dy=0, sx=1, sy=1, angle=0, shear=0)
-        return self._still, puppet(b, self.style)
+            i = self.index(t, grid)
+            if self.mode == 'poses':                                      # 換姿勢的那一下：壓扁再彈起來
+                st = self.info.get('step', 1.0)
+                u = (b / st) % 1.0
+                k = math.exp(-9 * u * st)
+                base.update(dy=0.018 * math.sin(math.pi * min(1.0, u * 1.6)), sx=1 + 0.045 * k, sy=1 - 0.055 * k)
+            elif self.mode == 'boomerang':                                # 實拍：拍頭很輕地壓一下，強調落拍
+                k = math.exp(-8 * (b % 1.0))
+                base.update(sx=1 + 0.018 * k, sy=1 - 0.022 * k)
+            return self._frame(i, bool(small)), base
+        base.update(puppet(b, self.style))
+        return self._still, base
 
 
 def puppet(b, style):
@@ -534,9 +590,9 @@ def puppet(b, style):
 
 
 def put_dancer(c, rgba, mv, x, foot_y, height, op=1.0, flip=False):
-    """依律動參數貼角色（腳底在 foot_y，跳起來時往上移）。"""
-    return place(c, rgba, x, foot_y - mv['dy'] * height, height, op=op, angle=mv['angle'], sx=mv['sx'], sy=mv['sy'],
-                 shear=mv['shear'], flip=flip)
+    """依貼圖參數貼角色：腳底在 (x, foot_y)，height＝身高（px）；跳起來時往上移。"""
+    return place(c, rgba, x, foot_y - mv['dy'] * height, height * mv.get('hscale', 1.0), op=op, angle=mv['angle'], sx=mv['sx'], sy=mv['sy'],
+                 shear=mv['shear'], flip=flip, anchor=mv.get('anchor', (0.5, 1.0)))
 
 
 def lineup(c, items, y, height, x0=0.12, x1=0.88, hues=None, op=1.0):
