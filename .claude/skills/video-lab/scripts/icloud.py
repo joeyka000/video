@@ -81,12 +81,25 @@ def main():
     guid, t0 = token_of(a.link), time.time()
     while True:
         want, items = listing(guid)
+        t_list, expired = time.time(), False
         for it in items:
             dst = os.path.join(a.out, it['name'])
             if os.path.exists(dst) and os.path.getsize(dst) == it['size']:
                 continue
+            if time.time() - t_list > 20 * 60:     # 下載連結會過期（回 410 Gone）：清單拿到超過 20 分鐘就重新列一次
+                expired = True
+                break
             print(f"下載 {it['name']}  {it['size'] / 1e9:.2f} GB", flush=True)
-            subprocess.run(['curl', '-sS', '-L', '--retry', '5', '-C', '-', '--max-time', '7200', '-o', dst, it['url']], check=True)
+            # --fail：HTTP 錯誤時不把錯誤訊息（例如 4 bytes 的「Gone」）寫進檔案；否則下一輪 -C - 會從第 4 byte 續傳，檔案大小對了但內容是壞的
+            r = subprocess.run(['curl', '-sS', '-L', '--fail', '--retry', '5', '-C', '-', '--max-time', '7200', '-o', dst, it['url']])
+            if r.returncode != 0:
+                if os.path.exists(dst) and os.path.getsize(dst) > it['size']:
+                    os.remove(dst)
+                print(f"  失敗（curl {r.returncode}），連結可能過期：重新列清單再抓", flush=True)
+                expired = True
+                break
+        if expired:
+            continue
         json.dump([{k: v for k, v in it.items() if k != 'url'} for it in items], open(os.path.join(a.out, 'icloud.json'), 'w'),
                   ensure_ascii=False, indent=1)
         print(f'{time.strftime("%H:%M:%S")} 相簿 {want} 個，已下載 {len(items)} 個', flush=True)
