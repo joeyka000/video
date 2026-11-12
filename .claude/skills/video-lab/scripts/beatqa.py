@@ -7,7 +7,8 @@
 量什麼：
   1. 閃白／亮度突升：逐格平均亮度（160×90 灰階），這一格比前兩格的較小值亮 ≥ --faint（0–255）就算一次；
      ≥ --strong 是「強閃」。每一次找最近的小節線與拍點，差幾格：
-       強閃必須在小節線 ±1 格（規則：閃白只在小節線上，換人時稍強）；淡閃在小節線或拍點 ±1 格
+       先分「閃白」（幾格內退回原本亮度）與「硬切」（切到特寫、換背景：之後亮度留在新的位置，6–10 格後仍 > 60%）：
+       強閃白必須在小節線 ±1 格（規則：閃白只在小節線上，換人時稍強）；淡閃白在小節線或拍點 ±1 格；硬切在拍點 ±1 格
      換背景的硬切也會被算成亮度突升（設計上也在小節線上，所以一起檢查）；變亮像素 < 35% 的是畫面內動作（特寫時
      高反差背景跟著晃），列出來但不算（實測閃白、硬切 ≥ 0.48，動作 0.13）
   2. 聲音：給 --song（剪好的歌）時，成片音軌對歌本身做 onset 互相關 → 混音位移（ffmpeg 合音軌錯位、剪歌後換錯檔都會露出來），
@@ -123,14 +124,22 @@ def main():
             dbar = (t - db[np.argmin(np.abs(db - t))]) * fps
             dbeat = (t - beats[np.argmin(np.abs(beats - t))]) * fps
             strong = rise[kmax] >= a.strong
-            ok = abs(dbar) <= 1.01 if strong else (abs(dbar) <= 1.01 or abs(dbeat) <= 1.01)
-            ev.append(dict(t=round(t, 3), frame=k, rise=round(float(rise[kmax]), 1), strong=bool(strong), d_bar=round(float(dbar), 2),
+            # 閃白還是硬切：閃白幾格就退回原本的亮度；硬切（切到特寫、換背景）之後亮度留在新的位置
+            after = L[min(n - 1, kmax + 6):min(n, kmax + 11)]
+            stay = float((np.median(after) - prev[kmax]) / max(rise[kmax], 1e-6)) if len(after) else 0.0
+            kind = '硬切' if stay > 0.6 else '閃白'
+            if kind == '硬切':                               # 硬切落在拍上就可以（眼睛特寫在第三拍切）
+                ok = abs(dbeat) <= 1.01 or abs(dbar) <= 1.01
+            else:                                            # 閃白：強的只能在小節線，淡的在小節線或拍點
+                ok = abs(dbar) <= 1.01 if strong else (abs(dbar) <= 1.01 or abs(dbeat) <= 1.01)
+            ev.append(dict(t=round(t, 3), frame=k, rise=round(float(rise[kmax]), 1), strong=bool(strong), kind=kind, d_bar=round(float(dbar), 2),
                            d_beat=round(float(dbeat), 2), ok=bool(ok)))
             f = g + 1
         else:
             f += 1
     bad = [e for e in ev if not e['ok']]
-    strong = [e for e in ev if e['strong']]
+    strong = [e for e in ev if e['strong'] and e['kind'] == '閃白']
+    cuts = [e for e in ev if e['kind'] == '硬切']
     on_bar = sum(abs(e['d_bar']) <= 1.01 for e in strong)
     # 2. 聲音
     o, ofps = audio_onset(a.video)
@@ -156,7 +165,8 @@ def main():
     os.makedirs(a.o, exist_ok=True)
     lines = [f'# 卡點檢查：{os.path.basename(a.video)}', '',
              f'- 影片 {n} 格、{fps:g} fps、{n / fps:.2f} 秒；拍格 {J.get("tempo", 0):.2f} BPM、{len(db)} 條小節線',
-             f'- 亮度突升 {len(ev)} 次（強閃 ≥ {a.strong:g}：{len(strong)} 次，落在小節線 ±1 格 {on_bar}/{len(strong)}）；不合格 {len(bad)} 次'
+             f'- 亮度突升 {len(ev)} 次：強閃白（≥ {a.strong:g}）{len(strong)} 次，落在小節線 ±1 格 {on_bar}/{len(strong)}；'
+             f'硬切 {len(cuts)} 次，落在拍點 ±1 格 {sum(e["ok"] for e in cuts)}/{len(cuts)}；不合格 {len(bad)} 次'
              f'；另有 {len(motion)} 次只是局部變亮（畫面內動作，變亮像素 < 35%，不算）',
              (f'- 混音位移（成片音軌 vs 歌）：{mux * 1000:+.0f} ms；參考：歌本身對拍格 {s_lag * 1000:+.0f} ms、成片音軌對拍格 {a_lag * 1000:+.0f} ms'
                '（onset 強度峰值本來就比鼓的攻擊點晚 30–50 ms，拍格鎖在鼓上時這裡約 +30～+60 是正常的）'
@@ -165,11 +175,11 @@ def main():
              f'- 畫面打點對拍格：{v_lag * 1000:+.0f} ms ＝ {v_lag * fps:+.1f} 格（對比 {v_con:.2f}；對比 < 1.15 表示畫面變化跟拍子關係很弱）',
              f'- 結論：**{"通過" if passed else "不通過"}**', '']
     if bad:
-        lines += ['## 不合格', '', '| 秒 | 格 | 亮度升 | 強閃 | 離小節線（格） | 離拍點（格） |', '|---|---|---|---|---|---|']
-        lines += [f'| {e["t"]:.3f} | {e["frame"]} | {e["rise"]} | {"是" if e["strong"] else ""} | {e["d_bar"]:+.2f} | {e["d_beat"]:+.2f} |' for e in bad]
+        lines += ['## 不合格', '', '| 秒 | 格 | 亮度升 | 種類 | 離小節線（格） | 離拍點（格） |', '|---|---|---|---|---|---|']
+        lines += [f'| {e["t"]:.3f} | {e["frame"]} | {e["rise"]} | {"強" if e["strong"] else "淡"}{e["kind"]} | {e["d_bar"]:+.2f} | {e["d_beat"]:+.2f} |' for e in bad]
         lines.append('')
-    lines += ['## 全部亮度突升', '', '| 秒 | 亮度升 | 強閃 | 離小節線（格） | 離拍點（格） | 合格 |', '|---|---|---|---|---|---|']
-    lines += [f'| {e["t"]:.3f} | {e["rise"]} | {"是" if e["strong"] else ""} | {e["d_bar"]:+.2f} | {e["d_beat"]:+.2f} | {"✓" if e["ok"] else "✗"} |' for e in ev]
+    lines += ['## 全部亮度突升', '', '| 秒 | 亮度升 | 種類 | 離小節線（格） | 離拍點（格） | 合格 |', '|---|---|---|---|---|---|']
+    lines += [f'| {e["t"]:.3f} | {e["rise"]} | {"強" if e["strong"] else "淡"}{e["kind"]} | {e["d_bar"]:+.2f} | {e["d_beat"]:+.2f} | {"✓" if e["ok"] else "✗"} |' for e in ev]
     open(os.path.join(a.o, 'report.md'), 'w').write('\n'.join(lines) + '\n')
     json.dump(dict(events=ev, audio_lag=a_lag, video_lag=v_lag, passed=passed), open(os.path.join(a.o, 'beatqa.json'), 'w'))
     for l in lines[2:7]:
